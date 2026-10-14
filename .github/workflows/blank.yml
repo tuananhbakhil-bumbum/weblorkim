@@ -35,13 +35,8 @@ on:
         options:
           - 'windows-2022'
           - 'windows-2025'
-      rdp_user:
-        description: '👤 Tên User gốc (để runneradmin hoặc tên muốn đổi thành)'
-        required: false
-        default: 'AISTV-D'
-        type: string
       fixed_password:
-        description: '🔐 Mật khẩu cố định cho cả RDP User & Sunshine Web UI'
+        description: '🔐 Mật khẩu cố định cho cả RDP (runneradmin) & Sunshine Web UI'
         required: false
         default: 'Aistv@2026'
         type: string
@@ -96,13 +91,12 @@ jobs:
 
     steps:
       # ───────────────────────────────────────────────
-      # 1. DỰNG Ổ ĐĨA RIÊNG X:\ & XÁC ĐỊNH USER GỐC
+      # 1. DỰNG Ổ ĐĨA RIÊNG X:\ & LẤY USER GỐC (RUNNERADMIN)
       # ───────────────────────────────────────────────
       - name: 🧱 Dựng ổ đĩa riêng X:\ & Chuẩn bị thông số User gốc
         shell: pwsh
         env:
           INPUT_DURATION: ${{ inputs.duration }}
-          INPUT_USER: ${{ inputs.rdp_user }}
         run: |
           $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
           "JOB_START_EPOCH=$nowEpoch" >> "$env:GITHUB_ENV";
@@ -119,17 +113,9 @@ jobs:
           "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV";
           "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV";
 
-          $origUser = "$env:USERNAME";
+          # Dùng thẳng 100% User gốc của hệ thống (runneradmin), không đổi tên
+          $user     = "$env:USERNAME";
           $profPath = "$env:USERPROFILE";
-          $user     = "$origUser";
-          if (-not ([string]::IsNullOrWhiteSpace("$env:INPUT_USER"))) {
-              $user = ("$env:INPUT_USER").Trim();
-          }
-          if ("$user" -notmatch '^[A-Za-z][A-Za-z0-9_-]{0,19}$') {
-              Write-Host "❌ Tên user không hợp lệ" -ForegroundColor Red;
-              exit 1;
-          }
-          "ORIG_USER=$origUser" >> "$env:GITHUB_ENV";
           "RDP_USER=$user" >> "$env:GITHUB_ENV";
           "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV";
 
@@ -210,7 +196,7 @@ jobs:
               gh release create "$env:RELEASE_TAG" "$dummy" --repo "$env:GH_REPO" --title "AI-STV Persistent OS Drive" --notes "Kho lưu trữ ổ đĩa tự động giữa các phiên (Không xóa)";
           }
           $global:LASTEXITCODE = 0;
-          Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $origUser ($profPath)" -ForegroundColor Green;
+          Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $user ($profPath)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
       # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
@@ -245,6 +231,11 @@ jobs:
               '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;',
               '    $excludeDirs = @(',
               '        "$profSrc\AppData\Local\Temp",',
+              '        "$profSrc\AppData\Local\Packages",',
+              '        "$profSrc\AppData\Local\TileDataLayer",',
+              '        "$profSrc\AppData\Local\ConnectedDevicesPlatform",',
+              '        "$profSrc\AppData\Local\Microsoft\Windows\UsrClass.dat*",',
+              '        "$profSrc\AppData\Local\Microsoft\Windows\Explorer",',
               '        "$profSrc\AppData\Local\NuGet",',
               '        "$profSrc\AppData\Local\Package Cache",',
               '        "$profSrc\AppData\Local\CrashDumps",',
@@ -474,7 +465,14 @@ jobs:
               }
           }
           if (Test-Path "$oldProf") {
-              robocopy "$oldProf" "$env:PROFILE_PATH" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* | Out-Null;
+              # Không chép đè thư mục Packages và UsrClass.dat để giữ nguyên Windows Settings & Start Menu của máy ảo
+              $skipRestoreDirs = @(
+                  "$oldProf\AppData\Local\Packages",
+                  "$oldProf\AppData\Local\TileDataLayer",
+                  "$oldProf\AppData\Local\ConnectedDevicesPlatform",
+                  "$oldProf\AppData\Local\Microsoft\Windows\Explorer"
+              );
+              robocopy "$oldProf" "$env:PROFILE_PATH" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs | Out-Null;
               $global:LASTEXITCODE = 0;
               Write-Host "✅ Đã nạp thẳng dữ liệu Profile cũ vào User gốc ($env:PROFILE_PATH)" -ForegroundColor Green;
           } else {
@@ -539,9 +537,9 @@ jobs:
           "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV";
 
           Write-Host "";
-          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER (SINGLE NATIVE USER)" -ForegroundColor Yellow;
+          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER (NATIVE RUNNERADMIN)" -ForegroundColor Yellow;
           Write-Host "🗂️ Ổ đĩa riêng: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan;
-          Write-Host "👤 User gốc: $env:ORIG_USER -> $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan;
+          Write-Host "👤 User gốc: $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan;
           Write-Host "🕒 Thời gian: $env:DISPLAY_TIME" -ForegroundColor Magenta;
 
       # ───────────────────────────────────────────────
@@ -793,7 +791,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 7. TAILSCALE (CÀI ĐẶT 3 LỚP TRƯỚC KHI ĐỔI TÊN USER)
+      # 7. TAILSCALE
       # ───────────────────────────────────────────────
       - name: 🌐 THIẾT LẬP MẠNG PREMIUM
         env:
@@ -812,13 +810,11 @@ jobs:
           $ts = 'C:\Program Files\Tailscale\tailscale.exe';
 
           if (-not (Test-Path "$ts")) {
-              # Dọn dẹp khóa Uninstall rác (nếu có từ bản lưu Registry cũ) và nhả tiến trình msiexec bị kẹt
               Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
               Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
               Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
               Start-Sleep -Seconds 2;
 
-              # Lớp 1: Tải MSI và copy sang ổ C:\ ($env:RUNNER_TEMP) để dịch vụ msiserver đọc trực tiếp
               $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi');
               if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) {
                   Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue;
@@ -834,7 +830,6 @@ jobs:
                   Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait;
               }
 
-              # Lớp 2: Nếu msiexec vẫn bị chặn, cài bằng bộ cài .exe trực tiếp (không qua msiexec)
               if (-not (Test-Path "$ts")) {
                   Write-Host "│ ⚠️  MSI chưa bung được file, chuyển sang bộ cài EXE trực tiếp..." -ForegroundColor Yellow;
                   $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe');
@@ -846,7 +841,6 @@ jobs:
                   } catch {}
               }
 
-              # Lớp 3: Dự phòng cuối qua Chocolatey
               if (-not (Test-Path "$ts")) {
                   Write-Host "│ ⚠️  Đang cài Tailscale dự phòng qua Chocolatey..." -ForegroundColor Yellow;
                   choco install tailscale -y --no-progress --limit-output --ignore-checksums;
@@ -897,20 +891,19 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 8. CẤU HÌNH TRỰC TIẾP USER GỐC & KHỞI ĐỘNG SUNSHINE
+      # 8. CẤU HÌNH MẬT KHẨU USER GỐC (RUNNERADMIN), SỬA SETTINGS & BẬT SUNSHINE
       # ───────────────────────────────────────────────
-      - name: 👤 Cấu hình trực tiếp User gốc (Đổi tên, Mật khẩu & Bật Sunshine)
+      - name: 👤 Đặt mật khẩu User gốc (runneradmin), Bảo vệ Settings & Bật Sunshine
         shell: pwsh
         env:
           RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
           FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
         run: |
-          $origUser = "$env:ORIG_USER";
           $user     = "$env:RDP_USER";
           $profPath = "$env:PROFILE_PATH";
 
           Write-Host "";
-          Write-Host "👤 ĐANG CẤU HÌNH TRỰC TIẾP USER GỐC: $origUser -> $user" -ForegroundColor Yellow;
+          Write-Host "👤 ĐANG CẤU HÌNH USER GỐC (GIỮ NGUYÊN TÊN): $user" -ForegroundColor Yellow;
 
           if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) {
               $matKhau = ("$env:RDP_PASSWORD_SECRET").Trim();
@@ -945,31 +938,6 @@ jobs:
               }
           } catch {}
 
-          if ("$user" -ne "$origUser") {
-              try {
-                  if ((Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue) -and (-not (Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue))) {
-                      Rename-LocalUser -Name "$origUser" -NewName "$user" -ErrorAction Stop;
-                      Write-Host "│ ✅ Đã đổi tên User gốc [$origUser] -> [$user]" -ForegroundColor Green;
-                  }
-              } catch {
-                  & wmic useraccount where "Name='$origUser'" rename "$user" *> $null;
-                  Write-Host "│ ✅ Đã đổi tên User gốc qua WMIC [$origUser] -> [$user]" -ForegroundColor Green;
-              }
-
-              $aliasProfile = "C:\Users\$user";
-              if ((-not (Test-Path "$aliasProfile")) -and (Test-Path "$profPath")) {
-                  New-Item -ItemType Junction -Path "$aliasProfile" -Target "$profPath" -Force | Out-Null;
-                  Write-Host "│ ✅ Đã liên kết $aliasProfile <-> $profPath" -ForegroundColor Green;
-              }
-          }
-
-          $activeUserObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
-          if (-not ($activeUserObj)) {
-              $activeUserObj = Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue;
-              $user = $activeUserObj.Name;
-              "RDP_USER=$user" >> "$env:GITHUB_ENV";
-          }
-
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
           try {
               Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop;
@@ -983,10 +951,20 @@ jobs:
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
           Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
 
-          $userSid = $activeUserObj.SID.Value;
-          & icacls "$profPath" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-          $global:LASTEXITCODE = 0;
+          # Đảm bảo quyền ALL APPLICATION PACKAGES (S-1-15-2-1) và đăng ký lại Windows Settings
+          try {
+              Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name 'AppXSvc' -ErrorAction SilentlyContinue;
+              Set-Service -Name 'StateRepository' -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name 'StateRepository' -ErrorAction SilentlyContinue;
+              & icacls "$profPath\AppData\Local\Packages" /grant "*S-1-15-2-1:(OI)(CI)F" /T /C /Q *> $null;
+              if (Test-Path 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml') {
+                  Add-AppxPackage -Register 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml' -DisableDevelopmentMode -ErrorAction SilentlyContinue;
+              }
+              Write-Host "│ ✅ Đã kích hoạt & bảo vệ Windows Settings (ImmersiveControlPanel)" -ForegroundColor Green;
+          } catch {}
 
+          $global:LASTEXITCODE = 0;
           "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV";
           "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
 
@@ -1000,6 +978,8 @@ jobs:
           $sunDir = 'C:\Program Files\Sunshine';
           $sunExe = "$sunDir\sunshine.exe";
           $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG";
+          $userSid = (Get-LocalUser -Name "$user").SID.Value;
+
           if (Test-Path "$sunExe") {
               & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
               & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
@@ -1128,9 +1108,6 @@ jobs:
           }
 
           $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue;
-          if (-not ($uObj)) {
-              $uObj = Get-LocalUser -Name "$env:ORIG_USER" -ErrorAction SilentlyContinue;
-          }
           $userSid = $uObj.SID.Value;
 
           $state = [ordered]@{
@@ -1280,11 +1257,10 @@ jobs:
           $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           $sigFile    = "$env:CONTROL_SIGNAL_FILE";
           $u          = "$env:RDP_USER";
-          $origU      = "$env:ORIG_USER";
 
           Write-Host "";
           Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow;
-          Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389" -ForegroundColor Cyan;
+          Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389 (User:$u)" -ForegroundColor Cyan;
           Write-Host "☀️ Sunshine Web UI : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "🎛️ Web Quản Lý     : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "🕐 Kết thúc dự kiến: $($endLocal.ToString('HH:mm:ss'))" -ForegroundColor Green;
@@ -1316,11 +1292,11 @@ jobs:
               try {
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
-                      if ((("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -or ("$lineStr" -match "^\s*>?$([regex]::Escape("$origU"))\s+")) -and ("$lineStr" -notmatch "\s+console\s+")) {
+                      if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
                           $parts = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
                               & tscon "$sidNum" /dest:console *> $null;
-                              Write-Host "🖥️ Đã trả phiên User gốc (ID: $sidNum) về màn hình Console cho Sunshine!" -ForegroundColor Green;
+                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine!" -ForegroundColor Green;
                           }
                       }
                   };
@@ -1433,7 +1409,6 @@ jobs:
         env:
           DURATION: ${{ inputs.duration }}
           WIN_IMAGE: ${{ inputs.windows_image }}
-          USER_IN: ${{ inputs.rdp_user }}
           FIXED_PASS: ${{ inputs.fixed_password }}
           VDD_RES: ${{ inputs.vdd_resolution }}
           PKGS: ${{ inputs.choco_packages }}
@@ -1445,7 +1420,7 @@ jobs:
           $ddnsStr = ("$env:DDNS").ToLower();
 
           Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan;
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "rdp_user=$env:USER_IN" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
           if (($LASTEXITCODE) -ne 0) {
               throw 'Không kích hoạt được phiên mới';
           }
