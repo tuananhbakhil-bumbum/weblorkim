@@ -237,19 +237,19 @@ jobs:
           # 1. Xuất các nhánh Registry hệ thống & User
           ;$regBk = [System.IO.Path]::Combine("$osDir", 'Registry');
           ;$null = New-Item -ItemType Directory -Force -Path "$regBk";
-          reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;
-          reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;
-          reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;
+          reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> ($null);
+          reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> ($null);
+          reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> ($null);
 
           # Xuất thêm Registry cá nhân của User (Software & Environment) từ NTUSER.DAT
           ;$ntUserDat = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'NTUSER.DAT');
           if (Test-Path "$ntUserDat") {
-              reg load "HKU\AISTV_TEMP_HIVE" "$ntUserDat" *> $null;
-              reg export "HKU\AISTV_TEMP_HIVE\Software" "$regBk\User-Software.reg" /y *> $null;
-              reg export "HKU\AISTV_TEMP_HIVE\Environment" "$regBk\User-Env.reg" /y *> $null;
+              reg load "HKU\AISTV_TEMP_HIVE" "$ntUserDat" *> ($null);
+              reg export "HKU\AISTV_TEMP_HIVE\Software" "$regBk\User-Software.reg" /y *> ($null);
+              reg export "HKU\AISTV_TEMP_HIVE\Environment" "$regBk\User-Env.reg" /y *> ($null);
               [gc]::Collect();
               Start-Sleep -Seconds 1;
-              reg unload "HKU\AISTV_TEMP_HIVE" *> $null;
+              reg unload "HKU\AISTV_TEMP_HIVE" *> ($null);
           }
 
           # 2. Đồng bộ Profile từ C:\Users\<user> sang X:\AISTV-SYSTEM\Users\<user>
@@ -264,7 +264,7 @@ jobs:
                       "$profSrc\AppData\Local\ConnectedDevicesPlatform" `
                       "$profSrc\AppData\Local\TileDataLayer" `
                       "$profSrc\AppData\Local\Microsoft\Windows\Caches" `
-                      "$profSrc\AppData\Local\Microsoft\Windows\Explorer" *> $null;
+                      "$profSrc\AppData\Local\Microsoft\Windows\Explorer" *> ($null);
               ;$global:LASTEXITCODE = 0;
           }
 
@@ -283,21 +283,21 @@ jobs:
                   foreach ($d in @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue)) {
                       if (("$($d.Name)" -notin ($base.PF64)) -and ("$($d.Name)" -notin ($skipNames))) {
                           ;$dest = [System.IO.Path]::Combine("$cOverlay\PF64", "$($d.Name)");
-                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
                       }
                   }
 
                   foreach ($d in @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue)) {
                       if (("$($d.Name)" -notin ($base.PF86)) -and ("$($d.Name)" -notin ($skipNames))) {
                           ;$dest = [System.IO.Path]::Combine("$cOverlay\PF86", "$($d.Name)");
-                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
                       }
                   }
 
                   foreach ($d in @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue)) {
                       if (("$($d.Name)" -notin ($base.PD)) -and ("$($d.Name)" -notin ($skipNames))) {
                           ;$dest = [System.IO.Path]::Combine("$cOverlay\PD", "$($d.Name)");
-                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+                          robocopy "$($d.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
                       }
                   }
               } catch {}
@@ -312,7 +312,7 @@ jobs:
                   if (("$nm" -notin @('AISTV-SYSTEM', 'System Volume Information', 'Pagefile.sys')) -and ("$nm" -notlike '*RECYCLE.BIN*')) {
                       ;$dest = [System.IO.Path]::Combine("$extraRoot", "$nm");
                       if ($item.PSIsContainer) {
-                          robocopy "$($item.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+                          robocopy "$($item.FullName)" "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
                       } else {
                           Copy-Item -Path "$($item.FullName)" -Destination "$dest" -Force -ErrorAction SilentlyContinue;
                       }
@@ -345,18 +345,18 @@ jobs:
               git config user.name "AI-STV-Bot";
               git config user.email "bot@aistv.local";
               git remote add origin "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GH_REPO).git";
-              git fetch origin "$env:STATE_BRANCH" -q 2>$null;
+              git fetch origin "$env:STATE_BRANCH" -q 2>($null);
               if ($LASTEXITCODE -eq 0) {
                   git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q;
               } else {
                   git checkout --orphan "$env:STATE_BRANCH" -q;
               }
-              robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
-              robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+              robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
+              robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
               ;$global:LASTEXITCODE = 0;
               git add -A;
-              git commit -m "Sync session state [$Reason]" -q 2>$null;
-              git push -u origin "$env:STATE_BRANCH" --force -q 2>$null;
+              git commit -m "Sync session state [$Reason]" -q 2>($null);
+              git push -u origin "$env:STATE_BRANCH" --force -q 2>($null);
               Pop-Location;
               Write-Host "✅ [$Reason] Đã lưu state & registry lên nhánh Git ($env:STATE_BRANCH)" -ForegroundColor Green;
           } catch {
@@ -381,8 +381,8 @@ jobs:
               "$archiveBase", '*',
               '-xr!Pagefile.sys', '-xr!swapfile.sys', '-xr!System Volume Information'
           );
-          & 7z @sevenZipArgs *> $null;
-          ;$sevenZipCode = $LASTEXITCODE;
+          & 7z @sevenZipArgs *> ($null);
+          ;$sevenZipCode = ($LASTEXITCODE);
           Pop-Location;
 
           ;$rawChunks = @(Get-ChildItem -Path "$packDir" -Filter 'aistv-drive.7z.*' -ErrorAction SilentlyContinue);
@@ -396,7 +396,7 @@ jobs:
           foreach ($c in ($chunks)) {
               ;$chunkList += [ordered]@{
                   name = "$($c.Name)"
-                  size = $c.Length
+                  size = ($c.Length)
               };
           }
 
@@ -404,8 +404,8 @@ jobs:
               updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
               reason     = "$Reason"
               osBuild    = "$env:OS_BUILD"
-              chunkCount = $chunks.Count
-              chunks     = $chunkList
+              chunkCount = ($chunks.Count)
+              chunks     = ($chunkList)
           };
           ;$manifestPath = [System.IO.Path]::Combine("$packDir", 'drive-manifest.json');
           ;$manifestJson = ConvertTo-Json -InputObject ($manifest) -Depth 5;
@@ -430,7 +430,7 @@ jobs:
               ;$validNames = @($chunks.Name) + @('drive-manifest.json', 'init.txt');
               foreach ($asset in @($relJson.assets)) {
                   if (("$($asset.name)" -like 'aistv-drive.7z.*') -and ("$($asset.name)" -notin ($validNames))) {
-                      gh release delete-asset "$env:RELEASE_TAG" "$($asset.name)" --repo "$env:GH_REPO" -y *> $null;
+                      gh release delete-asset "$env:RELEASE_TAG" "$($asset.name)" --repo "$env:GH_REPO" -y *> ($null);
                   }
               }
           } catch {}
@@ -456,7 +456,7 @@ jobs:
           }
           ;$null = New-Item -ItemType Directory -Force -Path "$dlDir";
 
-          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null;
+          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>($null);
           ;$manifestFile = [System.IO.Path]::Combine("$dlDir", 'drive-manifest.json');
 
           if (-not (Test-Path "$manifestFile")) {
@@ -488,7 +488,7 @@ jobs:
           ;$null = New-Item -ItemType Directory -Force -Path "$stage";
 
           Write-Host "📂 Đang bung toàn bộ ổ đĩa vào ${dl}:\..." -ForegroundColor Cyan;
-          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null;
+          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> ($null);
           Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue;
 
           ;$stateHits = @(Get-ChildItem -Path "$stage" -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -Force -ErrorAction SilentlyContinue);
@@ -497,25 +497,25 @@ jobs:
               ;$sourceRoot = "$($stateHits[0].Directory.Parent.FullName)";
           }
 
-          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
           ;$global:LASTEXITCODE = 0;
           ;$null = New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR";
 
           ;$extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra');
           if (Test-Path "$extraRoot") {
-              robocopy "$extraRoot" "${dl}:\" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+              robocopy "$extraRoot" "${dl}:\" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
               ;$global:LASTEXITCODE = 0;
           }
 
           ;$cOverlay = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'C-Drive-Overlay');
           if (Test-Path "$cOverlay\PF64") {
-              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
           }
           if (Test-Path "$cOverlay\PF86") {
-              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
           }
           if (Test-Path "$cOverlay\PD") {
-              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
+              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> ($null);
           }
           ;$global:LASTEXITCODE = 0;
 
@@ -531,7 +531,7 @@ jobs:
                       "$oldProf\AppData\Local\ConnectedDevicesPlatform" `
                       "$oldProf\AppData\Local\TileDataLayer" `
                       "$oldProf\AppData\Local\Microsoft\Windows\Caches" `
-                      "$oldProf\AppData\Local\Microsoft\Windows\Explorer" *> $null;
+                      "$oldProf\AppData\Local\Microsoft\Windows\Explorer" *> ($null);
               ;$global:LASTEXITCODE = 0;
               Write-Host "✅ Đã chuẩn bị dữ liệu profile cũ từ ổ ${dl}:\" -ForegroundColor Green;
           } else {
@@ -544,7 +544,7 @@ jobs:
               ;$regFiles = @(Get-ChildItem -Path "$regBk" -Filter '*.reg' -ErrorAction SilentlyContinue);
               foreach ($rf in ($regFiles)) {
                   if ("$($rf.Name)" -notlike 'User-*') {
-                      reg import "$($rf.FullName)" *> $null;
+                      reg import "$($rf.FullName)" *> ($null);
                   }
               }
               Write-Host "✅ Đã nạp lại Registry hệ thống & biến môi trường từ ổ riêng" -ForegroundColor Green;
@@ -728,7 +728,7 @@ jobs:
               }
           }
           ;$allPkgs = @();
-          foreach ($p in @($savedPkgs +$inputPkgs)) {
+          foreach ($p in @(($savedPkgs) + ($inputPkgs))) {
               if (("$p") -and ("$p" -notin ($allPkgs))) {
                   ;$allPkgs += "$p";
               }
@@ -760,7 +760,7 @@ jobs:
           ;$user = "$env:RDP_USER";
 
           function Get-Pick([string]$s) {
-              return $s[[System.Security.Cryptography.RandomNumberGenerator]::GetInt32($s.Length)];
+              return ($s)[[System.Security.Cryptography.RandomNumberGenerator]::GetInt32(($s).Length)];
           }
 
           function New-PremiumPassword {
@@ -770,7 +770,7 @@ jobs:
               ;$special = '!@#%^*_';
               ;$all     = "$upper$lower$numbers";
               ;$chars   = @((Get-Pick "$upper"), (Get-Pick "$lower"), (Get-Pick "$numbers"), (Get-Pick "$special"));
-              for ($i = 0; $i -lt 10; $i++) {
+              for ($i = 0; ($i) -lt 10; ($i)++) {
                   ;$chars += (Get-Pick "$all");
               }
               ;$shuffled = Sort-Object -InputObject ($chars) -Property { [System.Security.Cryptography.RandomNumberGenerator]::GetInt32([int]::MaxValue) };
@@ -793,17 +793,17 @@ jobs:
 
           # Tắt giới hạn mật khẩu & tắt tự động khóa tài khoản (Lockout)
           try {
-              & net accounts /lockoutthreshold:0 /maxpwage:unlimited /minpwage:0 *> $null;
+              & net accounts /lockoutthreshold:0 /maxpwage:unlimited /minpwage:0 *> ($null);
               ;$secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg');
               ;$secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb');
-              & secedit /export /cfg "$secCfg" *> $null;
+              & secedit /export /cfg "$secCfg" *> ($null);
               if (Test-Path "$secCfg") {
                   ;$rawSec = Get-Content -Raw -Path "$secCfg";
                   ;$rawSec = "$rawSec" -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0';
                   ;$rawSec = "$rawSec" -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0';
                   ;$rawSec = "$rawSec" -replace 'LockoutBadCount\s*=\s*\d+', 'LockoutBadCount = 0';
                   Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode;
-                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null;
+                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> ($null);
                   Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue;
               }
           } catch {}
@@ -830,16 +830,16 @@ jobs:
           try {
               ;$null = New-LocalUser -Name "$user" -Password ($securePass) -AccountNeverExpires -PasswordNeverExpires -Description 'AI STV Persistent User' -ErrorAction Stop;
           } catch {
-              & net user "$user" "$matKhau" /add /y /expires:never *> $null;
+              & net user "$user" "$matKhau" /add /y /expires:never *> ($null);
           }
 
-          & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
-          & net user "$user" /passwordchg:no *> $null;
-          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null;
+          & net user "$user" "$matKhau" /active:yes /expires:never *> ($null);
+          & net user "$user" /passwordchg:no *> ($null);
+          Set-LocalUser -Name "$user" -PasswordNeverExpires ($true) -AccountNeverExpires -ErrorAction SilentlyContinue;
           Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue;
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
-          & net localgroup Administrators "$user" /add *> $null;
-          & net localgroup "Remote Desktop Users" "$user" /add *> $null;
+          & net localgroup Administrators "$user" /add *> ($null);
+          & net localgroup "Remote Desktop Users" "$user" /add *> ($null);
           Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
           ;$global:LASTEXITCODE = 0;
 
@@ -865,7 +865,7 @@ jobs:
 
           ;$sid = "$($checkUser.SID.Value)";
           ;$sb  = New-Object System.Text.StringBuilder 260;
-          ;$hr  = [AistvProfile]::CreateProfile("$sid", "$user", $sb, 260);
+          ;$hr  = [AistvProfile]::CreateProfile("$sid", "$user", ($sb), 260);
           ;$profPath = "$($sb.ToString())";
           if ([string]::IsNullOrWhiteSpace("$profPath")) {
               ;$profPath = "C:\Users\$user";
@@ -881,7 +881,7 @@ jobs:
                       "$env:PROFILE_BACKUP\AppData\Local\ConnectedDevicesPlatform" `
                       "$env:PROFILE_BACKUP\AppData\Local\TileDataLayer" `
                       "$env:PROFILE_BACKUP\AppData\Local\Microsoft\Windows\Caches" `
-                      "$env:PROFILE_BACKUP\AppData\Local\Microsoft\Windows\Explorer" *> $null;
+                      "$env:PROFILE_BACKUP\AppData\Local\Microsoft\Windows\Explorer" *> ($null);
               ;$global:LASTEXITCODE = 0;
               Remove-Item -Path "$env:PROFILE_BACKUP" -Recurse -Force -ErrorAction SilentlyContinue;
 
@@ -891,9 +891,9 @@ jobs:
                   }
               }
 
-              & takeown /F "$profPath" /R /D Y *> $null;
-              & icacls "$profPath" /setowner "${user}" /T /C /Q *> $null;
-              & icacls "$profPath" /grant "${user}:(OI)(CI)F" /T /C /Q *> $null;
+              & takeown /F "$profPath" /R /D Y *> ($null);
+              & icacls "$profPath" /setowner "${user}" /T /C /Q *> ($null);
+              & icacls "$profPath" /grant "${user}:(OI)(CI)F" /T /C /Q *> ($null);
               ;$global:LASTEXITCODE = 0;
               Write-Host "│ ✅ Đã khôi phục dữ liệu profile & đồng bộ chuẩn SID Owner" -ForegroundColor Green;
           } else {
@@ -906,32 +906,32 @@ jobs:
           if ((Test-Path "$regDir") -and (Test-Path "$ntUserNew")) {
               ;$uRegFiles = @(Get-ChildItem -Path "$regDir" -Filter 'User-*.reg' -ErrorAction SilentlyContinue);
               if ($uRegFiles.Count -gt 0) {
-                  reg load "HKU\$sid" "$ntUserNew" *> $null;
+                  reg load "HKU\$sid" "$ntUserNew" *> ($null);
                   foreach ($urf in ($uRegFiles)) {
                       ;$rawReg = (Get-Content -Raw -Path "$($urf.FullName)") -replace 'HKEY_USERS\\AISTV_TEMP_HIVE', "HKEY_USERS\$sid";
                       ;$tmpReg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "$($urf.Name)");
                       Set-Content -Path "$tmpReg" -Value "$rawReg" -Encoding Unicode;
-                      reg import "$tmpReg" *> $null;
+                      reg import "$tmpReg" *> ($null);
                       Remove-Item -Path "$tmpReg" -Force -ErrorAction SilentlyContinue;
                   }
                   [gc]::Collect();
                   Start-Sleep -Seconds 1;
-                  reg unload "HKU\$sid" *> $null;
+                  reg unload "HKU\$sid" *> ($null);
                   Write-Host "│ ✅ Đã khôi phục Registry cá nhân của User (Software & Environment)" -ForegroundColor Green;
               }
           }
 
           try {
               ;$ws   = New-Object -ComObject WScript.Shell;
-              ;$lnk1 =$ws.CreateShortcut('C:\Users\Public\Desktop\O-DIA-RIENG-AISTV.lnk');
+              ;$lnk1 = ($ws).CreateShortcut('C:\Users\Public\Desktop\O-DIA-RIENG-AISTV.lnk');
               ;$lnk1.TargetPath = "$($env:MOUNT_LETTER):\";
               ;$lnk1.Save();
 
-              ;$lnk2 =$ws.CreateShortcut('C:\Users\Public\Desktop\AISTV-SHARED.lnk');
+              ;$lnk2 = ($ws).CreateShortcut('C:\Users\Public\Desktop\AISTV-SHARED.lnk');
               ;$lnk2.TargetPath = "$env:SHARED_DATA_DIR";
               ;$lnk2.Save();
 
-              ;$lnk3 =$ws.CreateShortcut('C:\Users\Public\Desktop\WEB-QUAN-LY-RDP.url');
+              ;$lnk3 = ($ws).CreateShortcut('C:\Users\Public\Desktop\WEB-QUAN-LY-RDP.url');
               ;$lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/";
               ;$lnk3.Save();
 
@@ -958,8 +958,8 @@ jobs:
           }
           Write-Host "│ ✅ User tồn tại (Enabled: $($userObj.Enabled))" -ForegroundColor Green;
 
-          ;$adminList = (& net localgroup Administrators 2>$null) -join "`n";
-          ;$rdpList   = (& net localgroup "Remote Desktop Users" 2>$null) -join "`n";
+          ;$adminList = (& net localgroup Administrators 2>($null)) -join "`n";
+          ;$rdpList   = (& net localgroup "Remote Desktop Users" 2>($null)) -join "`n";
           ;$isAdmin   = "$adminList" -match [regex]::Escape("$u");
           ;$isRdp     = "$rdpList" -match [regex]::Escape("$u");
 
@@ -1004,8 +1004,8 @@ jobs:
           }
           Write-Host "│ ✅ Kết nối Tailscale thành công" -ForegroundColor Green;
 
-          ;$ip =$null;
-          for ($i = 0; $i -lt 20; $i++) {
+          ;$ip = ($null);
+          for ($i = 0; ($i) -lt 20; ($i)++) {
               ;$rawOut = & "$ts" ip -4 2>&1;
               ;$out = ($rawOut -join "`n").Trim();
               if ("$out" -match '^\d+\.\d+\.\d+\.\d+\z') {
@@ -1053,7 +1053,7 @@ jobs:
           }
 
           ;$ok = ($false);
-          for ($i = 1; $i -le 3; $i++) {
+          for ($i = 1; ($i) -le 3; ($i)++) {
               try {
                   ;$uri = "https://www.duckdns.org/update?domains=$domain&token=$($env:DUCKDNS_TOKEN)&ip=$($env:TAILSCALE_IP)";
                   ;$res = Invoke-RestMethod -Uri "$uri" -TimeoutSec 20;
@@ -1081,7 +1081,7 @@ jobs:
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
         run: |
-          ;$savePass = $null;
+          ;$savePass = ($null);
           if ("$env:RDP_PASS_SOURCE" -ne 'secret') {
               ;$savePass = "$env:RDP_PASS";
           }
@@ -1090,7 +1090,7 @@ jobs:
           ;$state = [ordered]@{
               user            = "$env:RDP_USER"
               sid             = "$userSid"
-              password        = $savePass
+              password        = ($savePass)
               passwordSource  = "$env:RDP_PASS_SOURCE"
               windowsImage    = "$env:WINDOWS_IMAGE"
               osBuild         = "$env:OS_BUILD"
@@ -1121,33 +1121,33 @@ jobs:
 
           while ($listener.IsListening) {
               try {
-                  ;$ctx  = $listener.GetContext();
-                  ;$req  = $ctx.Request;
-                  ;$resp = $ctx.Response;
-                  ;$path = $req.Url.AbsolutePath.ToLower();
+                  ;$ctx  = ($listener).GetContext();
+                  ;$req  = ($ctx).Request;
+                  ;$resp = ($ctx).Response;
+                  ;$path = ($req).Url.AbsolutePath.ToLower();
 
                   ;$now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
-                  ;$remain = [math]::Max(0, $endEpoch - $now);
-                  ;$h      = [math]::Floor($remain / 3600);
-                  ;$m      = [math]::Floor(($remain % 3600) / 60);
-                  ;$s      = $remain % 60;
+                  ;$remain = [math]::Max(0, ($endEpoch) - ($now));
+                  ;$h      = [math]::Floor(($remain) / 3600);
+                  ;$m      = [math]::Floor((($remain) % 3600) / 60);
+                  ;$s      = ($remain) % 60;
 
                   ;$statusMsg = '';
-                  if ($req.HttpMethod -eq 'POST') {
-                      if ($path -eq '/action/save') {
+                  if (($req).HttpMethod -eq 'POST') {
+                      if ("$path" -eq '/action/save') {
                           Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'SAVE_NOW' -Encoding UTF8;
                           ;$statusMsg = '✅ Đã gửi lệnh LƯU NGAY! Kiểm tra log GitHub Actions (quá trình nén mất khoảng 20-40 giây, máy vẫn hoạt động bình thường).';
-                      } elseif ($path -eq '/action/restart') {
+                      } elseif ("$path" -eq '/action/restart') {
                           Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'RESTART_SESSION' -Encoding UTF8;
                           ;$statusMsg = '🔁 Đã gửi lệnh LƯU & KHỞI ĐỘNG PHIÊN MỚI! RDP sẽ tự đăng xuất sau vài giây để đóng gói ổ đĩa đẩy lên GitHub và bật phiên mới...';
-                      } elseif ($path -eq '/action/stop') {
+                      } elseif ("$path" -eq '/action/stop') {
                           Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'STOP_SESSION' -Encoding UTF8;
                           ;$statusMsg = '🛑 Đã gửi lệnh LƯU & TẮT HẲN SERVER! RDP sẽ tự đăng xuất sau vài giây để đóng gói toàn bộ ổ đĩa lên GitHub trước khi tắt...';
                       }
                   }
 
                   ;$bannerHtml = '';
-                  if ($statusMsg) {
+                  if ("$statusMsg") {
                       ;$bannerHtml = "<div class='alert'>$statusMsg</div>";
                   }
 
@@ -1187,7 +1187,7 @@ jobs:
                       <div class="row"><span>🌐 IP Tailscale:</span><span class="val">$($env:TAILSCALE_IP):3389</span></div>
                       <div class="row"><span>👤 Tài khoản RDP:</span><span class="val">$($env:RDP_USER)</span></div>
                       <div class="row"><span>💽 Ổ đĩa lưu trữ:</span><span class="val">$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>
-                      <div class="row"><span>⏳ Thời gian còn lại:</span><span class="val">${h}h ${m}m ${s}s</span></div>
+                      <div class="row"><span>⏳ Thời gian còn lại:</span><span class="val">$($h)h $($m)m $($s)s</span></div>
                   </div>
                   <form method="POST" action="/action/save">
                       <button type="submit" class="btn-save">
@@ -1216,8 +1216,8 @@ jobs:
           "@;
                   ;$buf = [System.Text.Encoding]::UTF8.GetBytes("$html");
                   ;$resp.ContentType = 'text/html; charset=utf-8';
-                  ;$resp.ContentLength64 = $buf.Length;
-                  ;$resp.OutputStream.Write($buf, 0, $buf.Length);
+                  ;$resp.ContentLength64 = ($buf).Length;
+                  ;$resp.OutputStream.Write(($buf), 0, ($buf).Length);
                   ;$resp.OutputStream.Close();
               } catch {}
           }
@@ -1232,8 +1232,8 @@ jobs:
         shell: pwsh
         run: |
           ;$tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
-          ;$start = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds([long]"$env:JOB_START_EPOCH").UtcDateTime, $tz);
-          ;$end   = $start.AddMinutes([int]"$env:TOTAL_MINUTES");
+          ;$start = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds([long]"$env:JOB_START_EPOCH").UtcDateTime, ($tz));
+          ;$end   = ($start).AddMinutes([int]"$env:TOTAL_MINUTES");
 
           ;$passText = "$env:RDP_PASS";
           if ("$env:RDP_PASS_SOURCE" -eq 'secret') {
@@ -1272,7 +1272,7 @@ jobs:
         run: |
           ;$tz         = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
           ;$endEpoch   = [long]"$env:JOB_START_EPOCH" + ([long]"$env:TOTAL_MINUTES" * 60);
-          ;$endLocal   = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds($endEpoch).UtcDateTime, $tz);
+          ;$endLocal   = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds(($endEpoch)).UtcDateTime, ($tz));
           ;$saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           ;$sigFile    = "$env:CONTROL_SIGNAL_FILE";
 
@@ -1310,14 +1310,14 @@ jobs:
               }
 
               ;$now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
-              ;$remain = $endEpoch - $now;
-              if ($remain -le 0) {
+              ;$remain = ($endEpoch) - ($now);
+              if (($remain) -le 0) {
                   Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow;
                   break;
               }
 
               # 2. Watchdog kiểm tra & tự động hồi sinh User / RDP mỗi 10 giây nếu bị Windows/GitHub kill
-              if (((Get-Date) - $lastGuard).TotalSeconds -ge 10) {
+              if (((Get-Date) - ($lastGuard)).TotalSeconds -ge 10) {
                   ;$uName  = "$env:RDP_USER";
                   ;$uCheck = Get-LocalUser -Name "$uName" -ErrorAction SilentlyContinue;
                   if (-not ($uCheck)) {
@@ -1326,24 +1326,25 @@ jobs:
                       try {
                           ;$null = New-LocalUser -Name "$uName" -Password ($secPass) -AccountNeverExpires -PasswordNeverExpires -ErrorAction Stop;
                       } catch {
-                          & net user "$uName" "$env:RDP_PASS" /add /y /expires:never *> $null;
+                          & net user "$uName" "$env:RDP_PASS" /add /y /expires:never *> ($null);
                       }
-                      & net user "$uName" "$env:RDP_PASS" /active:yes /expires:never *> $null;
-                      & net localgroup Administrators "$uName" /add *> $null;
-                      & net localgroup "Remote Desktop Users" "$uName" /add *> $null;
+                      & net user "$uName" "$env:RDP_PASS" /active:yes /expires:never *> ($null);
+                      Set-LocalUser -Name "$uName" -PasswordNeverExpires ($true) -AccountNeverExpires -ErrorAction SilentlyContinue;
+                      & net localgroup Administrators "$uName" /add *> ($null);
+                      & net localgroup "Remote Desktop Users" "$uName" /add *> ($null);
                       if (Test-Path "$env:PROFILE_PATH") {
-                          & icacls "$env:PROFILE_PATH" /setowner "${uName}" /T /C /Q *> $null;
-                          & icacls "$env:PROFILE_PATH" /grant "${uName}:(OI)(CI)F" /T /C /Q *> $null;
+                          & icacls "$env:PROFILE_PATH" /setowner "${uName}" /T /C /Q *> ($null);
+                          & icacls "$env:PROFILE_PATH" /grant "${uName}:(OI)(CI)F" /T /C /Q *> ($null);
                       }
                       ;$global:LASTEXITCODE = 0;
                   } else {
                       if (-not ($uCheck.Enabled)) {
                           Write-Host "⚠️ [WATCHDOG] Phát hiện user $uName bị vô hiệu hóa! Đang mở lại..." -ForegroundColor Yellow;
                           Enable-LocalUser -Name "$uName" -ErrorAction SilentlyContinue;
-                          & net user "$uName" /active:yes /expires:never *> $null;
+                          & net user "$uName" /active:yes /expires:never *> ($null);
                       }
-                      & net localgroup Administrators "$uName" /add *> $null;
-                      & net localgroup "Remote Desktop Users" "$uName" /add *> $null;
+                      & net localgroup Administrators "$uName" /add *> ($null);
+                      & net localgroup "Remote Desktop Users" "$uName" /add *> ($null);
                   }
 
                   # Giữ cấu hình RDP & NLA không bị Group Policy ghi đè
@@ -1362,16 +1363,16 @@ jobs:
               }
 
               # 3. Ghi log định kỳ mỗi 5 phút
-              if (((Get-Date) - $lastLog).TotalMinutes -ge 5) {
+              if (((Get-Date) - ($lastLog)).TotalMinutes -ge 5) {
                   ;$svc  = Get-Service -Name TermService -ErrorAction SilentlyContinue;
                   ;$conn = @(Get-NetTCPConnection -LocalPort 3389 -State Established -ErrorAction SilentlyContinue).Count;
-                  ;$h = [math]::Floor($remain / 3600);
-                  ;$m = [math]::Floor(($remain % 3600) / 60);
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Kết nối: $conn | Còn lại: ${h}h ${m}m | Web: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Blue;
+                  ;$h = [math]::Floor(($remain) / 3600);
+                  ;$m = [math]::Floor((($remain) % 3600) / 60);
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Kết nối: $conn | Còn lại: $($h)h $($m)m | Web: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Blue;
                   ;$lastLog = Get-Date;
               }
 
-              if ((-not ($warned)) -and ($remain -le 300)) {
+              if ((-not ($warned)) -and (($remain) -le 300)) {
                   try {
                       msg * /TIME:290 "Phien RDP sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
@@ -1402,15 +1403,15 @@ jobs:
           if ("$u") {
               try {
                   ;$loggedOff = ($false);
-                  ;$qLines = @(quser 2>$null);
-                  for ($idx = 1; $idx -lt $qLines.Count; $idx++) {
+                  ;$qLines = @(quser 2>($null));
+                  for ($idx = 1; ($idx) -lt ($qLines.Count); ($idx)++) {
                       ;$cleanLine = ("$($qLines[$idx])" -replace '^>', ' ').Trim();
                       ;$parts = @("$cleanLine" -split '\s+');
                       if (($parts.Count -gt 1) -and ("$($parts[0])" -ieq "$u")) {
-                          for ($pIdx = 1; $pIdx -lt $parts.Count; $pIdx++) {
+                          for ($pIdx = 1; ($pIdx) -lt ($parts.Count); ($pIdx)++) {
                               ;$candidate = "$($parts[$pIdx])";
                               if ("$candidate" -match '^\d+\z') {
-                                  logoff $candidate *> $null;
+                                  logoff "$candidate" *> ($null);
                                   ;$loggedOff = ($true);
                                   break;
                               }
@@ -1453,8 +1454,8 @@ jobs:
 
           try {
               if (Test-Path "$ts") {
-                  & "$ts" logout *> $null;
-                  & "$ts" down *> $null;
+                  & "$ts" logout *> ($null);
+                  & "$ts" down *> ($null);
               }
               Write-Host "│ ✅ Đóng kết nối mạng" -ForegroundColor Green;
           } catch {}
