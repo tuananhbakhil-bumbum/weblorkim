@@ -255,7 +255,7 @@ jobs:
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {',
               '    try {',
               '        $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json;',
-              '        $skipNames = @("Tailscale", "chocolatey", "Package Cache", "Microsoft", "Windows Defender", "Sunshine");',
+              '        $skipNames = @("Tailscale", "chocolatey", "Package Cache", "Microsoft", "Windows Defender");',
               '        $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay");',
               '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null;',
               '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null;',
@@ -659,11 +659,10 @@ jobs:
           $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique);
           if (($allPkgs.Count) -gt 0) {
               $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8;
-              $chocoCache = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'choco-cache');
               $allPkgs | ForEach-Object {
                   $pkg = "$_";
-                  Write-Host "📦 Cài $pkg (cache trên ổ riêng)..." -ForegroundColor Cyan;
-                  choco install "$pkg" -y --no-progress --limit-output --cache-location="$chocoCache";
+                  Write-Host "📦 Cài $pkg..." -ForegroundColor Cyan;
+                  choco install "$pkg" -y --no-progress --limit-output;
                   if ((($LASTEXITCODE) -ne 0) -and (($LASTEXITCODE) -ne 3010)) {
                       Write-Host "│ ⚠️  Cài $pkg lỗi (mã $LASTEXITCODE), bỏ qua" -ForegroundColor Yellow;
                   }
@@ -830,7 +829,6 @@ jobs:
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
-          $chocoCache            = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'choco-cache');
 
           Write-Host "";
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
@@ -840,21 +838,6 @@ jobs:
           $vHeight  = if (($resParts.Count) -ge 2) { $resParts[1] } else { '1080' };
           $vHz      = if (($resParts.Count) -ge 3) { $resParts[2] } else { '60' };
 
-          New-Item -ItemType Directory -Force -Path 'C:\IddSampleDriver' | Out-Null;
-          New-Item -ItemType Directory -Force -Path 'C:\VirtualDisplayDriver' | Out-Null;
-
-          $optionTxt = @(
-              "1",
-              "${vWidth}, ${vHeight}, ${vHz}",
-              "1920, 1080, 60",
-              "1920, 1080, 120",
-              "2560, 1440, 60",
-              "3840, 2160, 60"
-          ) -join "`r`n";
-          Set-Content -Path 'C:\IddSampleDriver\option.txt' -Value "$optionTxt" -Encoding UTF8;
-          Set-Content -Path 'C:\VirtualDisplayDriver\option.txt' -Value "$optionTxt" -Encoding UTF8;
-
-          $vddInstalled = $false;
           $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD');
           New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null;
 
@@ -875,7 +858,6 @@ jobs:
                       & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null;
                       & .\deviceinstaller64.exe enableidd 1 *> $null;
                       Pop-Location;
-                      $vddInstalled = $true;
                       Write-Host "│ ✅ Đã cài và bật màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
                   }
               }
@@ -887,6 +869,12 @@ jobs:
           try {
               $rdpTcp = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp';
               Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 1 -Force;
+
+              $tscKey = 'HKCU:\Software\Microsoft\Terminal Server Client';
+              New-Item -Path "$tscKey\LocalDevices" -Force | Out-Null;
+              Set-ItemProperty -Path "$tscKey" -Name 'AuthenticationLevelOverride' -Value 0 -Type DWord -Force;
+              Set-ItemProperty -Path "$tscKey\LocalDevices" -Name '127.0.0.1' -Value 255 -Type DWord -Force;
+
               $delegPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation';
               New-Item -Path "$delegPath\AllowDefaultCredentials" -Force | Out-Null;
               Set-ItemProperty -Path "$delegPath" -Name 'AllowDefaultCredentials' -Value 1 -Type DWord -Force;
@@ -898,7 +886,7 @@ jobs:
               Start-Process mstsc.exe -ArgumentList '/v:127.0.0.1', "/w:$vWidth", "/h:$vHeight";
 
               $userSessionId = $null;
-              1..15 | ForEach-Object {
+              1..12 | ForEach-Object {
                   if (-not ($userSessionId)) {
                       Start-Sleep -Seconds 2;
                       @(quser 2>$null) | ForEach-Object {
@@ -917,7 +905,7 @@ jobs:
               Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 0 -Force;
 
               if ($userSessionId) {
-                  Start-Sleep -Seconds 3;
+                  Start-Sleep -Seconds 2;
                   & tscon "$userSessionId" /dest:console *> $null;
                   Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue;
                   Write-Host "│ ✅ Đã kích hoạt phiên Desktop Console (ID: $userSessionId) gắn với màn hình ảo cho user $u!" -ForegroundColor Green;
@@ -936,11 +924,31 @@ jobs:
           $sunCfg = "$sunDir\config";
 
           if (-not (Test-Path "$sunExe")) {
-              Write-Host "│ 📦 Đang cài đặt Sunshine (lưu cache bộ cài trên ổ ${dl}:\ cho các phiên sau)..." -ForegroundColor Cyan;
-              choco install sunshine -y --no-progress --limit-output --cache-location="$chocoCache";
+              Write-Host "│ 🧹 Xóa khóa Registry Sunshine cũ (nếu có) để chống treo bộ cài NSIS..." -ForegroundColor Cyan;
+              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue;
+              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue;
+              Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue;
+              & sc.exe stop SunshineService *> $null;
+              & sc.exe delete SunshineService *> $null;
+              & sc.exe stop sunshinesvc *> $null;
+              & sc.exe delete sunshinesvc *> $null;
+
+              Write-Host "│ 📦 Đang cài đặt Sunshine qua Chocolatey (khống chế tối đa 90s chống treo)..." -ForegroundColor Cyan;
+              $installJob = Start-Job -ScriptBlock {
+                  choco install sunshine -y --no-progress --limit-output --ignore-checksums;
+              };
+              $completed = Wait-Job -Job ($installJob) -Timeout 90;
+              if (-not ($completed)) {
+                  Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
+                  Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue;
+                  Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
+              } else {
+                  Receive-Job -Job ($installJob) | Out-Null;
+              }
+              Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue;
               $global:LASTEXITCODE = 0;
           } else {
-              Write-Host "│ ⚡ Đã có sẵn Sunshine từ bản lưu ổ ${dl}:\!" -ForegroundColor Green;
+              Write-Host "│ ⚡ Đã khôi phục sẵn Sunshine từ ổ ${dl}:\ (Không cần tải hay cài lại)!" -ForegroundColor Green;
           }
 
           if (Test-Path "$sunExe") {
@@ -988,18 +996,20 @@ jobs:
               Pop-Location;
               Write-Host "│ ✅ Đã cài sẵn tài khoản Sunshine cố định -> User: $u | Pass: (Cố định)" -ForegroundColor Green;
 
+              $svcExe = "$sunDir\tools\sunshinesvc.exe";
               $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
+              if ((-not ($svcObj)) -and (Test-Path "$svcExe")) {
+                  & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null;
+                  $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue;
+              }
+
               if ($svcObj) {
                   Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
                   Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue;
                   Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running)" -ForegroundColor Green;
               } else {
-                  $action    = New-ScheduledTaskAction -Execute "$sunExe" -WorkingDirectory "$sunDir";
-                  $trigger   = New-ScheduledTaskTrigger -AtLogOn -User "$u";
-                  $principal = New-ScheduledTaskPrincipal -UserId "$u" -LogonType Interactive -RunLevel Highest;
-                  Register-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -Action ($action) -Trigger ($trigger) -Principal ($principal) -Force | Out-Null;
-                  Start-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -ErrorAction SilentlyContinue;
-                  Write-Host "│ ✅ Đã bật Sunshine trực tiếp trong phiên của user $u" -ForegroundColor Green;
+                  Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden;
+                  Write-Host "│ ✅ Đã bật Sunshine chạy nền trực tiếp" -ForegroundColor Green;
               }
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
           } else {
