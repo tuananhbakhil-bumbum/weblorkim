@@ -104,79 +104,75 @@ jobs:
           INPUT_DURATION: ${{ inputs.duration }}
           INPUT_USER: ${{ inputs.rdp_user }}
         run: |
-          $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-          "JOB_START_EPOCH=$nowEpoch" >> "$env:GITHUB_ENV"
+          $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
+          "JOB_START_EPOCH=$nowEpoch" >> "$env:GITHUB_ENV";
 
-          $total = 300
-          $display = '5 giờ 00 phút'
+          $total = 300;
+          $display = '5 giờ 00 phút';
           if ("$env:INPUT_DURATION" -eq '1h') {
-              $total = 60
-              $display = '1 giờ'
+              $total = 60;
+              $display = '1 giờ';
           } elseif ("$env:INPUT_DURATION" -eq '3h') {
-              $total = 180
-              $display = '3 giờ'
+              $total = 180;
+              $display = '3 giờ';
           }
-          "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV"
-          "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV"
+          "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV";
+          "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV";
 
-          $user = 'AISTV-D'
+          $user = 'AISTV-D';
           if (-not [string]::IsNullOrWhiteSpace("$env:INPUT_USER")) {
-              $user = "$env:INPUT_USER".Trim()
+              $user = "$env:INPUT_USER".Trim();
           }
           if ("$user" -notmatch '^[A-Za-z][A-Za-z0-9_-]{0,19}$') {
-              Write-Host "❌ Tên user không hợp lệ" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Tên user không hợp lệ" -ForegroundColor Red;
+              exit 1;
           }
-          "RDP_USER=$user" >> "$env:GITHUB_ENV"
+          "RDP_USER=$user" >> "$env:GITHUB_ENV";
 
-          $dl = ("$env:DRIVE_LETTER".Trim() -replace '[^A-Za-z]', '').ToUpper()
+          $dl = ("$env:DRIVE_LETTER".Trim() -replace '[^A-Za-z]', '').ToUpper();
           if (-not "$dl" -or "$dl" -in @('C', 'D')) {
-              $dl = 'X'
+              $dl = 'X';
           }
-          "MOUNT_LETTER=$dl" >> "$env:GITHUB_ENV"
+          "MOUNT_LETTER=$dl" >> "$env:GITHUB_ENV";
 
-          $vhdContainer = 'C:\AISTV-VHD-HOST'
-          New-Item -ItemType Directory -Force -Path "$vhdContainer" | Out-Null
-          $vhdFile = [System.IO.Path]::Combine("$vhdContainer", 'aistv-os-disk.vhdx')
+          $vhdContainer = 'C:\AISTV-VHD-HOST';
+          New-Item -ItemType Directory -Force -Path "$vhdContainer" | Out-Null;
+          $vhdFile = [System.IO.Path]::Combine("$vhdContainer", 'aistv-os-disk.vhdx');
 
-          $sizeBytes = ([int64]"$env:VHD_SIZE_GB") * 1GB
-          Write-Host "💽 Đang dựng ổ đĩa riêng ${dl}:\ ($env:VHD_SIZE_GB GB Dynamic VHDX)..." -ForegroundColor Cyan
-          $mounted = $false
+          $sizeBytes = ([int64]"$env:VHD_SIZE_GB") * 1GB;
+          Write-Host "💽 Đang dựng ổ đĩa riêng ${dl}:\ ($env:VHD_SIZE_GB GB Dynamic VHDX)..." -ForegroundColor Cyan;
+          $mounted = $false;
           try {
               if (-not (Test-Path "$vhdFile")) {
-                  New-VHD -Path "$vhdFile" -SizeBytes $sizeBytes -Dynamic |
-                      Mount-VHD -PassThru |
-                      Initialize-Disk -PartitionStyle GPT -PassThru |
-                      New-Partition -DriveLetter "$dl" -UseMaximumSize |
-                      Format-Volume -FileSystem NTFS -NewFileSystemLabel 'AISTV-OS' -Confirm:$false | Out-Null
+                  New-VHD -Path "$vhdFile" -SizeBytes $sizeBytes -Dynamic | Mount-VHD -PassThru | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -DriveLetter "$dl" -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'AISTV-OS' -Confirm:$false | Out-Null;
               } else {
-                  Mount-VHD -Path "$vhdFile"
+                  Mount-VHD -Path "$vhdFile";
               }
-              $null = Get-PSDrive -Name "$dl" -ErrorAction Stop
+              $null = Get-PSDrive -Name "$dl" -ErrorAction Stop;
               if (Test-Path "${dl}:\") {
-                  $mounted = $true
+                  $mounted = $true;
               }
           } catch {
-              Write-Host "⚠️ Chuyển sang cơ chế Ổ Đĩa Ảo Kernel DOS Devices cho ${dl}:\..." -ForegroundColor Yellow
+              Write-Host "⚠️ Chuyển sang cơ chế Ổ Đĩa Ảo Kernel DOS Devices cho ${dl}:\..." -ForegroundColor Yellow;
           }
 
           if (-not $mounted) {
-              $fallbackDir = [System.IO.Path]::Combine("$vhdContainer", 'VIRTUAL-DRIVE-ROOT')
-              New-Item -ItemType Directory -Force -Path "$fallbackDir" | Out-Null
-              & subst "${dl}:" "$fallbackDir"
-              Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices' -Name "${dl}:" -Value "\??\$fallbackDir" -Type String -Force
-              $null = New-PSDrive -Name "$dl" -PSProvider FileSystem -Root "${dl}:\" -Scope Global -ErrorAction SilentlyContinue
+              $fallbackDir = [System.IO.Path]::Combine("$vhdContainer", 'VIRTUAL-DRIVE-ROOT');
+              New-Item -ItemType Directory -Force -Path "$fallbackDir" | Out-Null;
+              & subst "${dl}:" "$fallbackDir";
+              Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices' -Name "${dl}:" -Value "\??\$fallbackDir" -Type String -Force;
+              $null = New-PSDrive -Name "$dl" -PSProvider FileSystem -Root "${dl}:\" -Scope Global -ErrorAction SilentlyContinue;
           }
 
-          $sharedRoot       = "${dl}:\AISTV-SYSTEM"
-          $sharedSessionDir = "$sharedRoot\sessions"
-          $sharedDataDir    = "$sharedRoot\DATA"
-          $sharedOsDir      = "$sharedRoot\OS-OVERLAY"
-          $sharedStateFile  = "$sharedSessionDir\rdp-session-state.json"
-          $profileStoreRoot = "$sharedRoot\Users"
-          $profileBackup    = 'C:\aistv-profile-old'
-          $baselineFile     = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'baseline-c-dirs.json')
-          $controlSignal    = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'aistv-control-action.txt')
+          $sharedRoot       = "${dl}:\AISTV-SYSTEM";
+          $sharedSessionDir = "$sharedRoot\sessions";
+          $sharedDataDir    = "$sharedRoot\DATA";
+          $sharedOsDir      = "$sharedRoot\OS-OVERLAY";
+          $sharedStateFile  = "$sharedSessionDir\rdp-session-state.json";
+          $profileStoreRoot = "$sharedRoot\Users";
+          $profileBackup    = 'C:\aistv-profile-old';
+          $baselineFile     = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'baseline-c-dirs.json');
+          $controlSignal    = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'aistv-control-action.txt');
 
           $initFolders = @(
               "$sharedRoot",
@@ -185,42 +181,42 @@ jobs:
               "$sharedOsDir",
               "$profileStoreRoot",
               "${dl}:\Apps"
-          )
+          );
           $initFolders | ForEach-Object {
-              New-Item -ItemType Directory -Force -Path "$_" | Out-Null
-          }
+              New-Item -ItemType Directory -Force -Path "$_" | Out-Null;
+          };
 
           $baseline = @{
-              PF64 = @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-              PF86 = @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-              PD   = @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-          }
-          $baseline | ConvertTo-Json -Depth 4 | Set-Content -Path "$baselineFile" -Encoding UTF8
+              PF64 = @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name);
+              PF86 = @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name);
+              PD   = @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name);
+          };
+          $baseline | ConvertTo-Json -Depth 4 | Set-Content -Path "$baselineFile" -Encoding UTF8;
 
-          "VHD_CONTAINER=$vhdContainer" >> "$env:GITHUB_ENV"
-          "VHD_FILE=$vhdFile" >> "$env:GITHUB_ENV"
-          "SHARED_ROOT=$sharedRoot" >> "$env:GITHUB_ENV"
-          "SHARED_SESSION_DIR=$sharedSessionDir" >> "$env:GITHUB_ENV"
-          "SHARED_DATA_DIR=$sharedDataDir" >> "$env:GITHUB_ENV"
-          "SHARED_OS_DIR=$sharedOsDir" >> "$env:GITHUB_ENV"
-          "SHARED_STATE_FILE=$sharedStateFile" >> "$env:GITHUB_ENV"
-          "PROFILE_ROOT=$profileStoreRoot" >> "$env:GITHUB_ENV"
-          "PROFILE_BACKUP=$profileBackup" >> "$env:GITHUB_ENV"
-          "BASELINE_FILE=$baselineFile" >> "$env:GITHUB_ENV"
-          "CONTROL_SIGNAL_FILE=$controlSignal" >> "$env:GITHUB_ENV"
+          "VHD_CONTAINER=$vhdContainer" >> "$env:GITHUB_ENV";
+          "VHD_FILE=$vhdFile" >> "$env:GITHUB_ENV";
+          "SHARED_ROOT=$sharedRoot" >> "$env:GITHUB_ENV";
+          "SHARED_SESSION_DIR=$sharedSessionDir" >> "$env:GITHUB_ENV";
+          "SHARED_DATA_DIR=$sharedDataDir" >> "$env:GITHUB_ENV";
+          "SHARED_OS_DIR=$sharedOsDir" >> "$env:GITHUB_ENV";
+          "SHARED_STATE_FILE=$sharedStateFile" >> "$env:GITHUB_ENV";
+          "PROFILE_ROOT=$profileStoreRoot" >> "$env:GITHUB_ENV";
+          "PROFILE_BACKUP=$profileBackup" >> "$env:GITHUB_ENV";
+          "BASELINE_FILE=$baselineFile" >> "$env:GITHUB_ENV";
+          "CONTROL_SIGNAL_FILE=$controlSignal" >> "$env:GITHUB_ENV";
 
-          $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
-          "OS_BUILD=$build" >> "$env:GITHUB_ENV"
+          $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild;
+          "OS_BUILD=$build" >> "$env:GITHUB_ENV";
 
-          $null = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" 2>&1
+          $null = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" 2>&1;
           if ($LASTEXITCODE -ne 0) {
-              Write-Host "ℹ️ Tạo kho lưu trữ Release [$env:RELEASE_TAG] trên GitHub..." -ForegroundColor Cyan
-              $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt')
-              Set-Content -Path "$dummy" -Value "AI-STV Persistent Storage Initialized" -Encoding UTF8
-              gh release create "$env:RELEASE_TAG" "$dummy" --repo "$env:GH_REPO" --title "AI-STV Persistent OS Drive" --notes "Kho lưu trữ ổ đĩa tự động giữa các phiên (Không xóa)"
+              Write-Host "ℹ️ Tạo kho lưu trữ Release [$env:RELEASE_TAG] trên GitHub..." -ForegroundColor Cyan;
+              $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt');
+              Set-Content -Path "$dummy" -Value "AI-STV Persistent Storage Initialized" -Encoding UTF8;
+              gh release create "$env:RELEASE_TAG" "$dummy" --repo "$env:GH_REPO" --title "AI-STV Persistent OS Drive" --notes "Kho lưu trữ ổ đĩa tự động giữa các phiên (Không xóa)";
           }
-          $global:LASTEXITCODE = 0
-          Write-Host "✅ Đã mount thành công ổ đĩa riêng: ${dl}:\ ($sharedRoot)" -ForegroundColor Green
+          $global:LASTEXITCODE = 0;
+          Write-Host "✅ Đã mount thành công ổ đĩa riêng: ${dl}:\ ($sharedRoot)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
       # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
@@ -228,204 +224,195 @@ jobs:
       - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
         shell: pwsh
         run: |
-          $script = @'
-          param(
-              [string]$Reason = 'session-end'
-          )
-          $ErrorActionPreference = 'Continue'
+          $_ = ''; $script = @'
+          param([string]$Reason = 'session-end')
+          $ErrorActionPreference = 'Continue';
 
           if ("$env:DATA_RESTORED" -ne '1' -or "$env:SESSION_READY" -ne '1') {
-              Write-Host '⚠️ Phiên chưa khởi tạo hoàn chỉnh, bỏ qua lưu để bảo vệ dữ liệu gốc trên GitHub' -ForegroundColor Yellow
-              exit 0
+              Write-Host '⚠️ Phiên chưa khởi tạo hoàn chỉnh, bỏ qua lưu để bảo vệ dữ liệu gốc trên GitHub' -ForegroundColor Yellow;
+              exit 0;
           }
 
-          $root  = "$env:SHARED_ROOT"
-          $osDir = "$env:SHARED_OS_DIR"
-          $dl    = "$env:MOUNT_LETTER"
+          $root  = "$env:SHARED_ROOT";
+          $osDir = "$env:SHARED_OS_DIR";
+          $dl    = "$env:MOUNT_LETTER";
           if (-not "$root" -or -not (Test-Path "$root")) {
-              Write-Host 'ℹ️ Chưa thấy ổ đĩa chung, bỏ qua'
-              exit 0
+              Write-Host 'ℹ️ Chưa thấy ổ đĩa chung, bỏ qua';
+              exit 0;
           }
 
-          Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, Sunshine, Profile & App..." -ForegroundColor Cyan
+          Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, Sunshine, Profile & App..." -ForegroundColor Cyan;
 
-          # 1. Xuất các nhánh Registry hệ thống & User
-          $regBk = [System.IO.Path]::Combine("$osDir", 'Registry')
-          New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null
-          reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null
-          reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null
-          reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null
+          $regBk = [System.IO.Path]::Combine("$osDir", 'Registry');
+          New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null;
+          reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;
+          reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;
+          reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;
 
-          # 2. Đồng bộ Profile từ C:\Users\<user> sang X:\AISTV-SYSTEM\Users\<user>
-          $u = "$env:RDP_USER"
-          $profSrc = "$env:PROFILE_PATH"
+          $u = "$env:RDP_USER";
+          $profSrc = "$env:PROFILE_PATH";
           if ("$u" -and "$profSrc" -and (Test-Path "$profSrc")) {
-              $profDst = [System.IO.Path]::Combine("$root", 'Users', "$u")
-              New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null
-              robocopy "$profSrc" "$profDst" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD "$profSrc\AppData\Local\Temp" | Out-Null
-              $global:LASTEXITCODE = 0
+              $profDst = [System.IO.Path]::Combine("$root", 'Users', "$u");
+              New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;
+              robocopy "$profSrc" "$profDst" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD "$profSrc\AppData\Local\Temp" | Out-Null;
+              $global:LASTEXITCODE = 0;
           }
 
-          # 3. Gom các thư mục phần mềm cài thêm trong C:\Program Files, Program Files (x86), ProgramData sang ổ X:\
           if ("$env:BASELINE_FILE" -and (Test-Path "$env:BASELINE_FILE")) {
               try {
-                  $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json
-                  $skipNames = @('Tailscale', 'chocolatey', 'Package Cache', 'Microsoft', 'Windows Defender', 'Sunshine')
+                  $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json;
+                  $skipNames = @('Tailscale', 'chocolatey', 'Package Cache', 'Microsoft', 'Windows Defender', 'Sunshine');
 
-                  $cOverlay = [System.IO.Path]::Combine("$osDir", 'C-Drive-Overlay')
-                  New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null
-                  New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null
-                  New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null
+                  $cOverlay = [System.IO.Path]::Combine("$osDir", 'C-Drive-Overlay');
+                  New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null;
+                  New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null;
+                  New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null;
 
                   Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
                       $_.Name -notin $base.PF64 -and $_.Name -notin $skipNames
                   } | ForEach-Object {
-                      $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name)
-                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-                  }
+                      $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name);
+                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+                  };
 
                   Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
                       $_.Name -notin $base.PF86 -and $_.Name -notin $skipNames
                   } | ForEach-Object {
-                      $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name)
-                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-                  }
+                      $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name);
+                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+                  };
 
                   Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
                       $_.Name -notin $base.PD -and $_.Name -notin $skipNames
                   } | ForEach-Object {
-                      $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name)
-                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-                  }
+                      $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name);
+                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+                  };
               } catch {}
           }
 
-          # 4. Đồng bộ mọi thư mục người dùng tạo thêm ở ngoài gốc ổ X:\ vào trong DriveRoot-Extra
           try {
-              $extraRoot = [System.IO.Path]::Combine("$osDir", 'DriveRoot-Extra')
-              New-Item -ItemType Directory -Force -Path "$extraRoot" | Out-Null
+              $extraRoot = [System.IO.Path]::Combine("$osDir", 'DriveRoot-Extra');
+              New-Item -ItemType Directory -Force -Path "$extraRoot" | Out-Null;
               Get-ChildItem "${dl}:\" -Force -ErrorAction SilentlyContinue | Where-Object {
                   $_.Name -notin @('AISTV-SYSTEM', 'System Volume Information', '$RECYCLE.BIN', 'Pagefile.sys')
               } | ForEach-Object {
-                  $dest = [System.IO.Path]::Combine("$extraRoot", $_.Name)
+                  $dest = [System.IO.Path]::Combine("$extraRoot", $_.Name);
                   if ($_.PSIsContainer) {
-                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+                      robocopy $_.FullName "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
                   } else {
-                      Copy-Item -Path $_.FullName -Destination "$dest" -Force -ErrorAction SilentlyContinue
+                      Copy-Item -Path $_.FullName -Destination "$dest" -Force -ErrorAction SilentlyContinue;
                   }
-              }
+              };
           } catch {}
-          $global:LASTEXITCODE = 0
+          $global:LASTEXITCODE = 0;
 
-          # 5. Cập nhật file state JSON
-          $stateFile = "$env:SHARED_STATE_FILE"
+          $stateFile = "$env:SHARED_STATE_FILE";
           if ("$stateFile" -and (Test-Path "$stateFile")) {
               try {
-                  $st = Get-Content -Raw -Path "$stateFile" | ConvertFrom-Json
-                  $st.lastUpdatedUtc = (Get-Date).ToUniversalTime().ToString('o')
-                  $st | ConvertTo-Json -Depth 5 | Set-Content -Path "$stateFile" -Encoding UTF8
+                  $st = Get-Content -Raw -Path "$stateFile" | ConvertFrom-Json;
+                  $st.lastUpdatedUtc = (Get-Date).ToUniversalTime().ToString('o');
+                  $st | ConvertTo-Json -Depth 5 | Set-Content -Path "$stateFile" -Encoding UTF8;
               } catch {}
           }
 
-          # 6. Đẩy state & metadata lên nhánh Git (aistv-drive-state)
-          $gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'git-state-sync')
+          $gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'git-state-sync');
           try {
               if (Test-Path "$gitStage") {
-                  Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue
+                  Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue;
               }
-              New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null
-              Push-Location "$gitStage"
-              git init -q
-              git config user.name "AI-STV-Bot"
-              git config user.email "bot@aistv.local"
-              git remote add origin "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GH_REPO).git"
-              git fetch origin "$env:STATE_BRANCH" -q 2>$null
+              New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null;
+              Push-Location "$gitStage";
+              git init -q;
+              git config user.name "AI-STV-Bot";
+              git config user.email "bot@aistv.local";
+              git remote add origin "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GH_REPO).git";
+              git fetch origin "$env:STATE_BRANCH" -q 2>$null;
               if ($LASTEXITCODE -eq 0) {
-                  git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q
+                  git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q;
               } else {
-                  git checkout --orphan "$env:STATE_BRANCH" -q
+                  git checkout --orphan "$env:STATE_BRANCH" -q;
               }
-              robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-              robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-              $global:LASTEXITCODE = 0
-              git add -A
-              git commit -m "Sync session state [$Reason]" -q 2>$null
-              git push -u origin "$env:STATE_BRANCH" --force -q 2>$null
-              Pop-Location
-              Write-Host "✅ [$Reason] Đã lưu state & registry lên nhánh Git ($env:STATE_BRANCH)" -ForegroundColor Green
+              robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              $global:LASTEXITCODE = 0;
+              git add -A;
+              git commit -m "Sync session state [$Reason]" -q 2>$null;
+              git push -u origin "$env:STATE_BRANCH" --force -q 2>$null;
+              Pop-Location;
+              Write-Host "✅ [$Reason] Đã lưu state & registry lên nhánh Git ($env:STATE_BRANCH)" -ForegroundColor Green;
           } catch {
               if ((Get-Location).Path -eq "$gitStage") {
-                  Pop-Location
+                  Pop-Location;
               }
           }
 
-          # 7. Đóng gói toàn bộ ổ đĩa X:\AISTV-SYSTEM thành các mảnh 1900MB và đẩy lên GitHub Release
-          $packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "gh-pack-$Reason")
+          $packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "gh-pack-$Reason");
           if (Test-Path "$packDir") {
-              Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue;
           }
-          New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null;
 
-          $archiveBase = [System.IO.Path]::Combine("$packDir", 'aistv-drive.7z')
-          Write-Host "📦 [$Reason] Đang nén toàn bộ ổ đĩa $root (đa luồng, đọc cả file đang mở)..." -ForegroundColor Cyan
+          $archiveBase = [System.IO.Path]::Combine("$packDir", 'aistv-drive.7z');
+          Write-Host "📦 [$Reason] Đang nén toàn bộ ổ đĩa $root (đa luồng, đọc cả file đang mở)..." -ForegroundColor Cyan;
 
-          Push-Location "$root"
+          Push-Location "$root";
           $sevenZipArgs = @(
               'a', '-t7z', '-mx=1', '-mmt=on', '-ssw', '-v1900m',
               "$archiveBase", '*',
               '-xr!Pagefile.sys', '-xr!swapfile.sys', '-xr!System Volume Information'
-          )
-          & 7z @sevenZipArgs *> $null
-          $sevenZipCode = $LASTEXITCODE
-          Pop-Location
+          );
+          & 7z @sevenZipArgs *> $null;
+          $sevenZipCode = $LASTEXITCODE;
+          Pop-Location;
 
-          $chunks = @(Get-ChildItem -Path "$packDir" -Filter 'aistv-drive.7z.*' | Sort-Object Name)
+          $chunks = @(Get-ChildItem -Path "$packDir" -Filter 'aistv-drive.7z.*' | Sort-Object Name);
           if ($chunks.Count -eq 0) {
-              Write-Host "❌ [$Reason] Không tạo được gói nén ổ đĩa (mã 7z: $sevenZipCode)" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ [$Reason] Không tạo được gói nén ổ đĩa (mã 7z: $sevenZipCode)" -ForegroundColor Red;
+              exit 1;
           }
 
           $manifest = [ordered]@{
-              updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
-              reason     = "$Reason"
-              osBuild    = "$env:OS_BUILD"
-              chunkCount = $chunks.Count
+              updatedUtc = (Get-Date).ToUniversalTime().ToString('o');
+              reason     = "$Reason";
+              osBuild    = "$env:OS_BUILD";
+              chunkCount = $chunks.Count;
               chunks     = @($chunks | ForEach-Object {
                   [ordered]@{
-                      name = $_.Name
-                      size = $_.Length
+                      name = $_.Name;
+                      size = $_.Length;
                   }
-              })
-          }
-          $manifestPath = [System.IO.Path]::Combine("$packDir", 'drive-manifest.json')
-          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path "$manifestPath" -Encoding UTF8
+              });
+          };
+          $manifestPath = [System.IO.Path]::Combine("$packDir", 'drive-manifest.json');
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path "$manifestPath" -Encoding UTF8;
 
-          Write-Host "⬆️  [$Reason] Đang tải $($chunks.Count) mảnh ổ đĩa lên GitHub Release ($env:RELEASE_TAG)..." -ForegroundColor Cyan
-          $uploadFiles = @($chunks | ForEach-Object { $_.FullName }) + @("$manifestPath")
-          gh release upload "$env:RELEASE_TAG" @uploadFiles --repo "$env:GH_REPO" --clobber
+          Write-Host "⬆️  [$Reason] Đang tải $($chunks.Count) mảnh ổ đĩa lên GitHub Release ($env:RELEASE_TAG)..." -ForegroundColor Cyan;
+          $uploadFiles = @($chunks | ForEach-Object { $_.FullName }) + @("$manifestPath");
+          gh release upload "$env:RELEASE_TAG" @uploadFiles --repo "$env:GH_REPO" --clobber;
           if ($LASTEXITCODE -ne 0) {
-              Write-Host "❌ [$Reason] Upload lên GitHub Release thất bại" -ForegroundColor Red
-              Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue
-              exit 1
+              Write-Host "❌ [$Reason] Upload lên GitHub Release thất bại" -ForegroundColor Red;
+              Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue;
+              exit 1;
           }
 
           try {
-              $relJson = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" --json assets | ConvertFrom-Json
-              $validNames = @($chunks.Name) + @('drive-manifest.json', 'init.txt')
+              $relJson = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" --json assets | ConvertFrom-Json;
+              $validNames = @($chunks.Name) + @('drive-manifest.json', 'init.txt');
               @($relJson.assets) | ForEach-Object {
                   if ($_.name -like 'aistv-drive.7z.*' -and ($_.name -notin $validNames)) {
-                      gh release delete-asset "$env:RELEASE_TAG" $_.name --repo "$env:GH_REPO" -y *> $null
+                      gh release delete-asset "$env:RELEASE_TAG" $_.name --repo "$env:GH_REPO" -y *> $null;
                   }
-              }
+              };
           } catch {}
 
-          Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host "✅ [$Reason] Đã lưu trọn vẹn toàn bộ ổ đĩa lên GitHub!" -ForegroundColor Green
-          exit 0
+          Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue;
+          Write-Host "✅ [$Reason] Đã lưu trọn vẹn toàn bộ ổ đĩa lên GitHub!" -ForegroundColor Green;
+          exit 0;
           '@
-          $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
-          Set-Content -Path "$saveScriptPath" -Value $script -Encoding UTF8
-          Write-Host '✅ Đã tạo save-data.ps1 (chỉ chạy khi tắt qua Web/Desktop hoặc hết giờ)' -ForegroundColor Green
+          $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
+          Set-Content -Path "$saveScriptPath" -Value $script -Encoding UTF8;
+          Write-Host '✅ Đã tạo save-data.ps1 (chỉ chạy khi tắt qua Web/Desktop hoặc hết giờ)' -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
       # 3. KHÔI PHỤC TOÀN BỘ Ổ ĐĨA TỪ GITHUB RELEASE
@@ -433,118 +420,118 @@ jobs:
       - name: ♻️ Khôi phục toàn bộ ổ đĩa từ GitHub
         shell: pwsh
         run: |
-          $dl = "$env:MOUNT_LETTER"
-          $dlDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'gh-restore')
+          $dl = "$env:MOUNT_LETTER";
+          $dlDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'gh-restore');
           if (Test-Path "$dlDir") {
-              Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue;
           }
-          New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null;
 
-          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null
-          $manifestFile = [System.IO.Path]::Combine("$dlDir", 'drive-manifest.json')
+          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null;
+          $manifestFile = [System.IO.Path]::Combine("$dlDir", 'drive-manifest.json');
 
           if (-not (Test-Path "$manifestFile")) {
-              Write-Host "ℹ️ Chưa có bản lưu ổ đĩa trên GitHub - đây là phiên khởi tạo đầu tiên!" -ForegroundColor Cyan
-              'DATA_RESTORED=1' >> "$env:GITHUB_ENV"
-              exit 0
+              Write-Host "ℹ️ Chưa có bản lưu ổ đĩa trên GitHub - đây là phiên khởi tạo đầu tiên!" -ForegroundColor Cyan;
+              'DATA_RESTORED=1' >> "$env:GITHUB_ENV";
+              exit 0;
           }
 
-          $manifest = Get-Content -Raw -Path "$manifestFile" | ConvertFrom-Json
-          Write-Host "⬇️  Phát hiện ổ đĩa từ phiên trước ($($manifest.chunkCount) mảnh, cập nhật lúc $($manifest.updatedUtc)). Đang tải về..." -ForegroundColor Cyan
+          $manifest = Get-Content -Raw -Path "$manifestFile" | ConvertFrom-Json;
+          Write-Host "⬇️  Phát hiện ổ đĩa từ phiên trước ($($manifest.chunkCount) mảnh, cập nhật lúc $($manifest.updatedUtc)). Đang tải về..." -ForegroundColor Cyan;
 
-          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'aistv-drive.7z.*' --dir "$dlDir"
+          gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'aistv-drive.7z.*' --dir "$dlDir";
           if ($LASTEXITCODE -ne 0) {
-              Write-Host "❌ Lỗi tải các mảnh ổ đĩa từ GitHub Release. Dừng phiên để bảo vệ dữ liệu gốc!" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Lỗi tải các mảnh ổ đĩa từ GitHub Release. Dừng phiên để bảo vệ dữ liệu gốc!" -ForegroundColor Red;
+              exit 1;
           }
 
-          $firstChunk = [System.IO.Path]::Combine("$dlDir", 'aistv-drive.7z.001')
+          $firstChunk = [System.IO.Path]::Combine("$dlDir", 'aistv-drive.7z.001');
           if (-not (Test-Path "$firstChunk")) {
-              Write-Host "❌ Thiếu mảnh ghép đầu tiên (aistv-drive.7z.001)!" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Thiếu mảnh ghép đầu tiên (aistv-drive.7z.001)!" -ForegroundColor Red;
+              exit 1;
           }
 
-          $stage = [System.IO.Path]::Combine("$env:VHD_CONTAINER", 'restore-stage')
+          $stage = [System.IO.Path]::Combine("$env:VHD_CONTAINER", 'restore-stage');
           if (Test-Path "$stage") {
-              Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue;
           }
-          New-Item -ItemType Directory -Force -Path "$stage" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage" | Out-Null;
 
-          Write-Host "📂 Đang bung toàn bộ ổ đĩa vào ${dl}:\..." -ForegroundColor Cyan
-          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null
-          Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "📂 Đang bung toàn bộ ổ đĩa vào ${dl}:\..." -ForegroundColor Cyan;
+          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null;
+          Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue;
 
-          $stateHit = Get-ChildItem -Path "$stage" -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1
-          $sourceRoot = "$stage"
+          $stateHit = Get-ChildItem -Path "$stage" -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1;
+          $sourceRoot = "$stage";
           if ($stateHit) {
-              $sourceRoot = $stateHit.Directory.Parent.FullName
+              $sourceRoot = $stateHit.Directory.Parent.FullName;
           }
 
-          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-          $global:LASTEXITCODE = 0
-          New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null
+          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+          $global:LASTEXITCODE = 0;
+          New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null;
 
-          $extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra')
+          $extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra');
           if (Test-Path "$extraRoot") {
-              robocopy "$extraRoot" "${dl}:\" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-              $global:LASTEXITCODE = 0
+              robocopy "$extraRoot" "${dl}:\" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              $global:LASTEXITCODE = 0;
           }
 
-          $cOverlay = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'C-Drive-Overlay')
+          $cOverlay = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'C-Drive-Overlay');
           if (Test-Path "$cOverlay\PF64") {
-              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
           }
           if (Test-Path "$cOverlay\PF86") {
-              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
           }
           if (Test-Path "$cOverlay\PD") {
-              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
           }
-          $global:LASTEXITCODE = 0
+          $global:LASTEXITCODE = 0;
 
-          $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER")
+          $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER");
           if (Test-Path "$oldProf") {
               if (Test-Path "$env:PROFILE_BACKUP") {
-                  Remove-Item -Path "$env:PROFILE_BACKUP" -Recurse -Force -ErrorAction SilentlyContinue
+                  Remove-Item -Path "$env:PROFILE_BACKUP" -Recurse -Force -ErrorAction SilentlyContinue;
               }
-              New-Item -ItemType Directory -Force -Path "$env:PROFILE_BACKUP" | Out-Null
-              robocopy "$oldProf" "$env:PROFILE_BACKUP" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* | Out-Null
-              $global:LASTEXITCODE = 0
-              Write-Host "✅ Đã chuẩn bị dữ liệu profile cũ từ ổ ${dl}:\" -ForegroundColor Green
+              New-Item -ItemType Directory -Force -Path "$env:PROFILE_BACKUP" | Out-Null;
+              robocopy "$oldProf" "$env:PROFILE_BACKUP" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* | Out-Null;
+              $global:LASTEXITCODE = 0;
+              Write-Host "✅ Đã chuẩn bị dữ liệu profile cũ từ ổ ${dl}:\" -ForegroundColor Green;
           } else {
-              Write-Host "ℹ️ Không thấy profile của user $env:RDP_USER trong bản lưu" -ForegroundColor Yellow
+              Write-Host "ℹ️ Không thấy profile của user $env:RDP_USER trong bản lưu" -ForegroundColor Yellow;
           }
-          Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue;
 
-          $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry')
+          $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry');
           if (Test-Path "$regBk") {
               Get-ChildItem -Path "$regBk" -Filter '*.reg' | Where-Object { $_.Name -notlike 'User-*' } | ForEach-Object {
-                  reg import $_.FullName *>$null
-              }
-              Write-Host "✅ Đã nạp lại Registry hệ thống & biến môi trường từ ổ riêng" -ForegroundColor Green
+                  reg import $_.FullName *>$null;
+              };
+              Write-Host "✅ Đã nạp lại Registry hệ thống & biến môi trường từ ổ riêng" -ForegroundColor Green;
           }
 
           if (Test-Path "$env:SHARED_STATE_FILE") {
               try {
-                  $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json
+                  $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json;
                   if ($state.password) {
-                      "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV"
-                      Write-Host "✅ Đã khôi phục mật khẩu phiên trước" -ForegroundColor Green
+                      "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV";
+                      Write-Host "✅ Đã khôi phục mật khẩu phiên trước" -ForegroundColor Green;
                   }
                   if ($state.sid) {
-                      "RESTORE_SID=$($state.sid)" >> "$env:GITHUB_ENV"
+                      "RESTORE_SID=$($state.sid)" >> "$env:GITHUB_ENV";
                   }
                   if ($state.osBuild -and "$($state.osBuild)" -ne "$env:OS_BUILD") {
-                      Write-Host "⚠️ Bản Windows khác phiên trước (trước: $($state.osBuild), nay:$env:OS_BUILD). Hãy chọn đúng windows_image." -ForegroundColor Yellow
+                      Write-Host "⚠️ Bản Windows khác phiên trước (trước: $($state.osBuild), nay:$env:OS_BUILD). Hãy chọn đúng windows_image." -ForegroundColor Yellow;
                   }
               } catch {
-                  Write-Host "⚠️ File state cũ không đọc được, bỏ qua" -ForegroundColor Yellow
+                  Write-Host "⚠️ File state cũ không đọc được, bỏ qua" -ForegroundColor Yellow;
               }
           }
 
-          'DATA_RESTORED=1' >> "$env:GITHUB_ENV"
-          Write-Host "✅ Khôi phục toàn bộ ổ đĩa từ GitHub hoàn tất!" -ForegroundColor Green
-          exit 0
+          'DATA_RESTORED=1' >> "$env:GITHUB_ENV";
+          Write-Host "✅ Khôi phục toàn bộ ổ đĩa từ GitHub hoàn tất!" -ForegroundColor Green;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 4. ÁNH XẠ HỆ ĐIỀU HÀNH SANG Ổ RIÊNG & BANNER
@@ -552,13 +539,13 @@ jobs:
       - name: 🔗 Gắn kết thư mục Hệ Điều Hành & Phần Mềm sang ổ riêng
         shell: pwsh
         run: |
-          $osDir      = "$env:SHARED_OS_DIR"
-          $appsDir    = [System.IO.Path]::Combine("$osDir", 'InstalledApps')
-          $binDir     = [System.IO.Path]::Combine("$osDir", 'bin')
-          $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache')
-          $instCache  = [System.IO.Path]::Combine("$osDir", 'Installers')
-          $sunCfgDir  = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config')
-          $dl         = "$env:MOUNT_LETTER"
+          $osDir      = "$env:SHARED_OS_DIR";
+          $appsDir    = [System.IO.Path]::Combine("$osDir", 'InstalledApps');
+          $binDir     = [System.IO.Path]::Combine("$osDir", 'bin');
+          $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache');
+          $instCache  = [System.IO.Path]::Combine("$osDir", 'Installers');
+          $sunCfgDir  = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config');
+          $dl         = "$env:MOUNT_LETTER";
 
           $folders = @(
               "$appsDir",
@@ -567,30 +554,30 @@ jobs:
               "$instCache",
               "$sunCfgDir",
               "${dl}:\Apps"
-          )
+          );
           $folders | ForEach-Object {
-              New-Item -ItemType Directory -Force -Path "$_" | Out-Null
-          }
+              New-Item -ItemType Directory -Force -Path "$_" | Out-Null;
+          };
 
           if (-not (Test-Path 'C:\AISTV-Apps')) {
-              New-Item -ItemType Junction -Path 'C:\AISTV-Apps' -Target "$appsDir" -Force | Out-Null
+              New-Item -ItemType Junction -Path 'C:\AISTV-Apps' -Target "$appsDir" -Force | Out-Null;
           }
 
-          $sysEnv  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-          $curPath = (Get-ItemProperty -Path "$sysEnv" -Name 'Path').Path
+          $sysEnv  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+          $curPath = (Get-ItemProperty -Path "$sysEnv" -Name 'Path').Path;
           if ("$curPath" -notlike "*$binDir*") {
-              Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force
+              Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force;
           }
 
-          "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"
-          "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
+          "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV";
+          "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV";
 
-          Write-Host ""
-          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER (GITHUB NATIVE DRIVE)" -ForegroundColor Yellow
-          Write-Host "🗂️ Ổ đĩa riêng: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan
-          Write-Host "👤 User riêng: $env:RDP_USER" -ForegroundColor Cyan
-          Write-Host "🕒 Thời gian: $env:DISPLAY_TIME" -ForegroundColor Magenta
-          Write-Host "✅ Đã gắn kết C:\AISTV-Apps, ${dl}:\Apps & đồng bộ tự động C:\Program Files <-> ${dl}:\" -ForegroundColor Green
+          Write-Host "";
+          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER (GITHUB NATIVE DRIVE)" -ForegroundColor Yellow;
+          Write-Host "🗂️ Ổ đĩa riêng: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan;
+          Write-Host "👤 User riêng: $env:RDP_USER" -ForegroundColor Cyan;
+          Write-Host "🕒 Thời gian: $env:DISPLAY_TIME" -ForegroundColor Magenta;
+          Write-Host "✅ Đã gắn kết C:\AISTV-Apps, ${dl}:\Apps & đồng bộ tự động C:\Program Files <-> ${dl}:\" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
       # 5. CẤU HÌNH RDP, MỞ PORT SUNSHINE / WEB & TỐI ƯU WINDOWS
@@ -598,129 +585,124 @@ jobs:
       - name: 🔧 CẤU HÌNH HỆ THỐNG & FIREWALL (RDP + SUNSHINE + WEB)
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE & WEB PANEL" -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE & WEB PANEL" -ForegroundColor Yellow;
 
           $stepsList = @(
               @{Name = "Bật Remote Desktop"; Script = {
-                  Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
+                  Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force;
               }},
               @{Name = "Cấu hình bảo mật RDP"; Script = {
-                  $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-                  Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Force
-                  Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Force
+                  $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp';
+                  Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Force;
+                  Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Force;
               }},
               @{Name = "Mở port RDP (3389), Web (8080) & Sunshine (47984-48010) cho Tailscale"; Script = {
-                  Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue
-                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue
-                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue
+                  Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
+                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue;
+                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue;
 
-                  New-NetFirewallRule -DisplayName 'RDP-Premium' -Direction Inbound -Action Allow `
-                      -Protocol TCP -LocalPort 3389,8080 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
-
-                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -Direction Inbound -Action Allow `
-                      -Protocol TCP -LocalPort 47984,47989,47990,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
-
-                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -Direction Inbound -Action Allow `
-                      -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
+                  New-NetFirewallRule -DisplayName 'RDP-Premium' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
+                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
+                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
               }},
               @{Name = "Khởi động dịch vụ RDP"; Script = {
-                  Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
-                  Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
-                  Start-Service -Name TermService -ErrorAction SilentlyContinue
-                  Start-Service -Name UmRdpService -ErrorAction SilentlyContinue
+                  Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue;
+                  Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue;
+                  Start-Service -Name TermService -ErrorAction SilentlyContinue;
+                  Start-Service -Name UmRdpService -ErrorAction SilentlyContinue;
               }}
-          )
+          );
 
           $stepsList | ForEach-Object {
-              $item = $_
+              $item = $_;
               try {
-                  & $item.Script
-                  Write-Host "│ ✅ $($item.Name)" -ForegroundColor Green
+                  & $item.Script;
+                  Write-Host "│ ✅ $($item.Name)" -ForegroundColor Green;
               } catch {
-                  Write-Host "│ ⚠️  $($item.Name) - bỏ qua lỗi nhỏ: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "│ ⚠️  $($item.Name) - bỏ qua lỗi nhỏ: $($_.Exception.Message)" -ForegroundColor Yellow;
               }
-          }
-          Write-Host "🎯 Cấu hình hoàn tất!" -ForegroundColor Green
-          exit 0
+          };
+          Write-Host "🎯 Cấu hình hoàn tất!" -ForegroundColor Green;
+          exit 0;
 
       - name: ⚙️ TỐI ƯU WINDOWS
         if: ${{ inputs.optimize_windows }}
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "⚙️  ĐANG TỐI ƯU WINDOWS" -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "⚙️  ĐANG TỐI ƯU WINDOWS" -ForegroundColor Yellow;
 
           $tweaksList = @(
-              @{Name = "Múi giờ Việt Nam (UTC+7)"; Script = { tzutil /s 'SE Asia Standard Time' }},
+              @{Name = "Múi giờ Việt Nam (UTC+7)"; Script = { tzutil /s 'SE Asia Standard Time'; }},
               @{Name = "Tắt sleep / tắt màn hình / hibernate"; Script = {
-                  powercfg /change standby-timeout-ac 0
-                  powercfg /change monitor-timeout-ac 0
-                  powercfg /change disk-timeout-ac 0
-                  powercfg /hibernate off
+                  powercfg /change standby-timeout-ac 0;
+                  powercfg /change monitor-timeout-ac 0;
+                  powercfg /change disk-timeout-ac 0;
+                  powercfg /hibernate off;
               }},
               @{Name = "Giữ phiên RDP (không tự ngắt khi rảnh/ngắt kết nối)"; Script = {
-                  $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-                  New-Item -Path "$p" -Force | Out-Null
-                  Set-ItemProperty -Path "$p" -Name 'MaxIdleTime' -Value 0 -Type DWord -Force
-                  Set-ItemProperty -Path "$p" -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force
-                  Set-ItemProperty -Path "$p" -Name 'fResetBroken' -Value 0 -Type DWord -Force
+                  $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services';
+                  New-Item -Path "$p" -Force | Out-Null;
+                  Set-ItemProperty -Path "$p" -Name 'MaxIdleTime' -Value 0 -Type DWord -Force;
+                  Set-ItemProperty -Path "$p" -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force;
+                  Set-ItemProperty -Path "$p" -Name 'fResetBroken' -Value 0 -Type DWord -Force;
               }},
               @{Name = "Tắt Windows Update (tránh tự cập nhật làm đổi bản Windows)"; Script = {
-                  Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
-                  Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
-                  Stop-Service -Name UsoSvc -Force -ErrorAction SilentlyContinue
-                  Set-Service -Name UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue
+                  Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue;
+                  Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue;
+                  Stop-Service -Name UsoSvc -Force -ErrorAction SilentlyContinue;
+                  Set-Service -Name UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue;
               }},
               @{Name = "Tắt Defender realtime (cho app chạy nhẹ, ít bị chặn)"; Script = {
-                  Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+                  Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop;
               }}
-          )
+          );
 
           $tweaksList | ForEach-Object {
-              $tw = $_
+              $tw = $_;
               try {
-                  & $tw.Script
-                  Write-Host "│ ✅ $($tw.Name)" -ForegroundColor Green
+                  & $tw.Script;
+                  Write-Host "│ ✅ $($tw.Name)" -ForegroundColor Green;
               } catch {
-                  Write-Host "│ ⚠️  $($tw.Name) - bỏ qua: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "│ ⚠️  $($tw.Name) - bỏ qua: $($_.Exception.Message)" -ForegroundColor Yellow;
               }
-          }
-          exit 0
+          };
+          exit 0;
 
       - name: 📦 CÀI APP (Tự động lưu danh sách gói vào ổ riêng cho các phiên sau)
         shell: pwsh
         env:
           PKGS: ${{ inputs.choco_packages }}
         run: |
-          $pkgListFile = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'installed-choco-packages.txt')
-          $savedPkgs = @()
+          $pkgListFile = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'installed-choco-packages.txt');
+          $savedPkgs = @();
           if (Test-Path "$pkgListFile") {
-              $savedPkgs = @(Get-Content -Path "$pkgListFile" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' })
+              $savedPkgs = @(Get-Content -Path "$pkgListFile" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' });
           }
-          $inputPkgs = @()
+          $inputPkgs = @();
           if (-not [string]::IsNullOrWhiteSpace("$env:PKGS")) {
               if ("$env:PKGS" -notmatch '^[A-Za-z0-9 ._\-]*$') {
-                  Write-Host "❌ Danh sách app chứa ký tự không hợp lệ" -ForegroundColor Red
-                  exit 1
+                  Write-Host "❌ Danh sách app chứa ký tự không hợp lệ" -ForegroundColor Red;
+                  exit 1;
               }
-              $inputPkgs = @("$env:PKGS" -split '\s+' | Where-Object { $_ })
+              $inputPkgs = @("$env:PKGS" -split '\s+' | Where-Object { $_ });
           }
-          $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique)
+          $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique);
           if ($allPkgs.Count -gt 0) {
-              $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8
-              $chocoCache = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'choco-cache')
+              $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8;
+              $chocoCache = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'choco-cache');
               $allPkgs | ForEach-Object {
-                  $pkg = "$_"
-                  Write-Host "📦 Cài $pkg (cache trên ổ riêng)..." -ForegroundColor Cyan
-                  choco install "$pkg" -y --no-progress --limit-output --cache-location="$chocoCache"
+                  $pkg = "$_";
+                  Write-Host "📦 Cài $pkg (cache trên ổ riêng)..." -ForegroundColor Cyan;
+                  choco install "$pkg" -y --no-progress --limit-output --cache-location="$chocoCache";
                   if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-                      Write-Host "│ ⚠️  Cài $pkg lỗi (mã $LASTEXITCODE), bỏ qua" -ForegroundColor Yellow
+                      Write-Host "│ ⚠️  Cài $pkg lỗi (mã $LASTEXITCODE), bỏ qua" -ForegroundColor Yellow;
                   }
-                  $global:LASTEXITCODE = 0
-              }
+                  $global:LASTEXITCODE = 0;
+              };
           }
-          exit 0
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 6. TẠO TÀI KHOẢN MẬT KHẨU CỐ ĐỊNH & ĐỒNG BỘ PROFILE VỚI Ổ X:\
@@ -731,141 +713,136 @@ jobs:
           RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
           FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
         run: |
-          Write-Host ""
-          Write-Host "👤 ĐANG TẠO USER RIÊNG: $env:RDP_USER" -ForegroundColor Yellow
-          $user = "$env:RDP_USER"
+          Write-Host "";
+          Write-Host "👤 ĐANG TẠO USER RIÊNG: $env:RDP_USER" -ForegroundColor Yellow;
+          $user = "$env:RDP_USER";
 
           if (-not [string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET")) {
-              $matKhau = "$env:RDP_PASSWORD_SECRET".Trim()
-              $source  = 'secret'
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ secret RDP_PASSWORD" -ForegroundColor Blue
+              $matKhau = "$env:RDP_PASSWORD_SECRET".Trim();
+              $source  = 'secret';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ secret RDP_PASSWORD" -ForegroundColor Blue;
           } elseif (-not [string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT")) {
-              $matKhau = "$env:FIXED_PASS_INPUT".Trim()
-              $source  = 'fixed_input'
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định xác định sẵn ($matKhau)" -ForegroundColor Blue
+              $matKhau = "$env:FIXED_PASS_INPUT".Trim();
+              $source  = 'fixed_input';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định xác định sẵn ($matKhau)" -ForegroundColor Blue;
           } elseif ("$env:RESTORE_PASS") {
-              $matKhau = "$env:RESTORE_PASS"
-              $source  = 'restored'
-              Write-Host "│ ℹ️  Dùng mật khẩu đã lưu từ phiên trước" -ForegroundColor Blue
+              $matKhau = "$env:RESTORE_PASS";
+              $source  = 'restored';
+              Write-Host "│ ℹ️  Dùng mật khẩu đã lưu từ phiên trước" -ForegroundColor Blue;
           } else {
-              $matKhau = 'Aistv@2026'
-              $source  = 'default_fixed'
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định mặc định: $matKhau" -ForegroundColor Blue
+              $matKhau = 'Aistv@2026';
+              $source  = 'default_fixed';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định mặc định: $matKhau" -ForegroundColor Blue;
           }
 
           try {
-              & net accounts /maxpwage:unlimited *> $null
-              $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg')
-              $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb')
-              & secedit /export /cfg "$secCfg" *> $null
+              & net accounts /maxpwage:unlimited *> $null;
+              $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg');
+              $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb');
+              & secedit /export /cfg "$secCfg" *> $null;
               if (Test-Path "$secCfg") {
-                  (Get-Content -Raw -Path "$secCfg") `
-                      -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0' `
-                      -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0' |
-                      Set-Content -Path "$secCfg" -Encoding Unicode
-                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null
-                  Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue
+                  $rawSec = Get-Content -Raw -Path "$secCfg";
+                  $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0';
+                  $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0';
+                  Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode;
+                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null;
+                  Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue;
               }
           } catch {}
 
-          $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force
+          $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
 
           if (Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue) {
-              Remove-LocalUser -Name "$user" -ErrorAction SilentlyContinue
-              Write-Host "│ ✅ Đã xóa user cũ" -ForegroundColor Green
+              Remove-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Đã xóa user cũ" -ForegroundColor Green;
           }
 
           try {
-              New-LocalUser -Name "$user" -Password $securePass -AccountNeverExpires -PasswordNeverExpires -Description 'AI STV Persistent User' -ErrorAction Stop | Out-Null
+              New-LocalUser -Name "$user" -Password $securePass -AccountNeverExpires -PasswordNeverExpires -Description 'AI STV Persistent User' -ErrorAction Stop | Out-Null;
           } catch {
-              & net user "$user" "$matKhau" /add /y /expires:never *> $null
+              & net user "$user" "$matKhau" /add /y /expires:never *> $null;
           }
 
-          & net user "$user" "$matKhau" /active:yes /expires:never *> $null
-          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null
-          Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue
-          & net localgroup Administrators "$user" /add *> $null
-          & net localgroup "Remote Desktop Users" "$user" /add *> $null
-          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue
-          $global:LASTEXITCODE = 0
+          & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
+          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null;
+          Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue;
+          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
+          & net localgroup Administrators "$user" /add *> $null;
+          & net localgroup "Remote Desktop Users" "$user" /add *> $null;
+          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
+          $global:LASTEXITCODE = 0;
 
-          $checkUser = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue
+          $checkUser = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
           if (-not $checkUser) {
-              Write-Host "│ ❌ Lỗi: Không thể khởi tạo user $user" -ForegroundColor Red
-              exit 1
+              Write-Host "│ ❌ Lỗi: Không thể khởi tạo user $user" -ForegroundColor Red;
+              exit 1;
           }
-          Write-Host "│ ✅ Đã tạo user & cấp quyền Administrator + RDP" -ForegroundColor Green
+          Write-Host "│ ✅ Đã tạo user & cấp quyền Administrator + RDP" -ForegroundColor Green;
 
-          "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV"
-          "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV"
+          "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV";
+          "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
 
-          Add-Type -TypeDefinition @'
-          using System;
-          using System.Text;
-          using System.Runtime.InteropServices;
-          public static class AistvProfile {
-              [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
-              public static extern int CreateProfile(string pszUserSid, string pszUserName, StringBuilder pszProfilePath, uint cchProfilePath);
-          }
-          '@
+          $cSharpCode = 'using System; using System.Text; using System.Runtime.InteropServices; public static class AistvProfile { [DllImport("userenv.dll", CharSet = CharSet.Unicode)] public static extern int CreateProfile(string pszUserSid, string pszUserName, StringBuilder pszProfilePath, uint cchProfilePath); }';
+          Add-Type -TypeDefinition "$cSharpCode" -ErrorAction SilentlyContinue;
 
-          $sid =$checkUser.SID.Value
-          $sb  = New-Object System.Text.StringBuilder 260
-          $hr  = [AistvProfile]::CreateProfile("$sid", "$user", $sb, 260)
-          $profPath =$sb.ToString()
+          $sid = $checkUser.SID.Value;
+          $sb  = New-Object System.Text.StringBuilder 260;
+          $hr  = [AistvProfile]::CreateProfile("$sid", "$user", $sb, 260);
+          $profPath = $sb.ToString();
           if ([string]::IsNullOrWhiteSpace("$profPath")) {
-              $profPath = "C:\Users\$user"
+              $profPath = "C:\Users\$user";
           }
-          New-Item -ItemType Directory -Force -Path "$profPath" | Out-Null
-          Write-Host "│ ✅ Profile đăng nhập: $profPath (Đồng bộ hai chiều với $($env:PROFILE_ROOT)\$user)" -ForegroundColor Green
-          "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV"
+          New-Item -ItemType Directory -Force -Path "$profPath" | Out-Null;
+          Write-Host "│ ✅ Profile đăng nhập: $profPath (Đồng bộ hai chiều với $($env:PROFILE_ROOT)\$user)" -ForegroundColor Green;
+          "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV";
 
           if (Test-Path "$env:PROFILE_BACKUP") {
-              robocopy "$env:PROFILE_BACKUP" "$profPath" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* | Out-Null
-              $global:LASTEXITCODE = 0
-              Remove-Item -Path "$env:PROFILE_BACKUP" -Recurse -Force -ErrorAction SilentlyContinue
-              & icacls "$profPath" /grant "${user}:(OI)(CI)F" /T /C /Q *> $null$global:LASTEXITCODE = 0
-              Write-Host "│ ✅ Đã khôi phục dữ liệu profile (Desktop, Downloads, Documents, AppData...)" -ForegroundColor Green
+              robocopy "$env:PROFILE_BACKUP" "$profPath" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* | Out-Null;
+              $global:LASTEXITCODE = 0;
+              Remove-Item -Path "$env:PROFILE_BACKUP" -Recurse -Force -ErrorAction SilentlyContinue;
+              & icacls "$profPath" /grant "${user}:(OI)(CI)F" /T /C /Q *> $null;
+              $global:LASTEXITCODE = 0;
+              Write-Host "│ ✅ Đã khôi phục dữ liệu profile (Desktop, Downloads, Documents, AppData...)" -ForegroundColor Green;
           } else {
-              Write-Host "│ ℹ️  Chưa có dữ liệu profile cũ (phiên đầu tiên)" -ForegroundColor Cyan
+              Write-Host "│ ℹ️  Chưa có dữ liệu profile cũ (phiên đầu tiên)" -ForegroundColor Cyan;
           }
 
-          # Cấu hình AutoLogon cho User cố định
-          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-          Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force
+          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
+          Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force;
 
           try {
-              $ws   = New-Object -ComObject WScript.Shell
-              $lnk1 = $ws.CreateShortcut('C:\Users\Public\Desktop\O-DIA-RIENG-AISTV.lnk')$lnk1.TargetPath = "$($env:MOUNT_LETTER):\"
-              $lnk1.Save()
+              $ws   = New-Object -ComObject WScript.Shell;
+              $lnk1 = $ws.CreateShortcut('C:\Users\Public\Desktop\O-DIA-RIENG-AISTV.lnk');
+              $lnk1.TargetPath = "$($env:MOUNT_LETTER):\";
+              $lnk1.Save();
 
-              $lnk2 =$ws.CreateShortcut('C:\Users\Public\Desktop\AISTV-SHARED.lnk')
-              $lnk2.TargetPath = "$env:SHARED_DATA_DIR"
-              $lnk2.Save()
+              $lnk2 = $ws.CreateShortcut('C:\Users\Public\Desktop\AISTV-SHARED.lnk');
+              $lnk2.TargetPath = "$env:SHARED_DATA_DIR";
+              $lnk2.Save();
 
-              $lnk3 = $ws.CreateShortcut('C:\Users\Public\Desktop\WEB-QUAN-LY-RDP.url')$lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"
-              $lnk3.Save()
+              $lnk3 = $ws.CreateShortcut('C:\Users\Public\Desktop\WEB-QUAN-LY-RDP.url');
+              $lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/";
+              $lnk3.Save();
 
-              $lnk4 = $ws.CreateShortcut('C:\Users\Public\Desktop\SUNSHINE-WEB-UI.url')$lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"
-              $lnk4.Save()
+              $lnk4 = $ws.CreateShortcut('C:\Users\Public\Desktop\SUNSHINE-WEB-UI.url');
+              $lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/";
+              $lnk4.Save();
 
-              # Shortcut thoát RDP mà KHÔNG làm khóa màn hình Sunshine (chuyển phiên về Console)
-              $tsconBat = 'C:\Users\Public\Desktop\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat'$batContent = '@echo off' + "`r`n" +
-                            'for /f "tokens=3-4" %%a in (''query session %USERNAME%'') do @if "%%b"=="Active" tscon %%a /dest:console'
-              Set-Content -Path "$tsconBat" -Value "$batContent" -Encoding ASCII
+              $tsconBat = 'C:\Users\Public\Desktop\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat';
+              $batContent = "@echo off`r`nfor /f `"tokens=3-4`" %%a in ('query session %USERNAME%') do @if `"%%b`"==`"Active`" tscon %%a /dest:console";
+              Set-Content -Path "$tsconBat" -Value "$batContent" -Encoding ASCII;
 
-              Write-Host "│ ✅ Đã tạo shortcut ổ đĩa riêng, Sunshine Web UI & Script giữ màn hình trên Desktop" -ForegroundColor Green
+              Write-Host "│ ✅ Đã tạo shortcut ổ đĩa riêng, Sunshine Web UI & Script giữ màn hình trên Desktop" -ForegroundColor Green;
           } catch {
-              Write-Host "│ ⚠️  Không tạo được shortcut" -ForegroundColor Yellow
+              Write-Host "│ ⚠️  Không tạo được shortcut" -ForegroundColor Yellow;
           }
 
-          'SESSION_READY=1' >> "$env:GITHUB_ENV"
-          Write-Host "✅ User $user đã sẵn sàng" -ForegroundColor Green
-          exit 0
+          'SESSION_READY=1' >> "$env:GITHUB_ENV";
+          Write-Host "✅ User $user đã sẵn sàng" -ForegroundColor Green;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 6.5. CÀI DRIVER MÀN HÌNH ẢO + TẢI & BẬT SẴN SUNSHINE CHO USER CỐ ĐỊNH Ổ X:\
@@ -875,321 +852,287 @@ jobs:
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
-          $ErrorActionPreference = 'Continue'$ProgressPreference    = 'SilentlyContinue'
-          $u                     = "$env:RDP_USER"
-          $p                     = "$env:RDP_PASS"
-          $instCache             = "$env:INSTALLER_CACHE"
-          $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG"
-          $dl                    = "$env:MOUNT_LETTER"
+          $ErrorActionPreference = 'Continue';
+          $ProgressPreference    = 'SilentlyContinue';
+          $u                     = "$env:RDP_USER";
+          $p                     = "$env:RDP_PASS";
+          $instCache             = "$env:INSTALLER_CACHE";
+          $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
+          $dl                    = "$env:MOUNT_LETTER";
 
-          Write-Host ""
-          Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
 
-          # Phân tách cấu hình độ phân giải
-          $resParts = "$env:VDD_RES" -split '[@x]'
-          $vWidth   = if ($resParts.Count -ge 1) {$resParts[0] } else { '1920' }
-          $vHeight  = if ($resParts.Count -ge 2) { $resParts[1] } else { '1080' }$vHz      = if ($resParts.Count -ge 3) {$resParts[2] } else { '60' }
+          $resParts = "$env:VDD_RES" -split '[@x]';
+          $vWidth   = if ($resParts.Count -ge 1) { $resParts[0] } else { '1920' };
+          $vHeight  = if ($resParts.Count -ge 2) { $resParts[1] } else { '1080' };
+          $vHz      = if ($resParts.Count -ge 3) { $resParts[2] } else { '60' };
 
-          # Tạo cấu hình độ phân giải cho IddSampleDriver & MttVDD
-          New-Item -ItemType Directory -Force -Path 'C:\IddSampleDriver' | Out-Null
-          New-Item -ItemType Directory -Force -Path 'C:\VirtualDisplayDriver' | Out-Null
+          New-Item -ItemType Directory -Force -Path 'C:\IddSampleDriver' | Out-Null;
+          New-Item -ItemType Directory -Force -Path 'C:\VirtualDisplayDriver' | Out-Null;
 
           $optionTxt = @(
-              "1"
-              "${vWidth}, ${vHeight},${vHz}"
-              "1920, 1080, 60"
-              "1920, 1080, 120"
-              "2560, 1440, 60"
+              "1",
+              "${vWidth}, ${vHeight}, ${vHz}",
+              "1920, 1080, 60",
+              "1920, 1080, 120",
+              "2560, 1440, 60",
               "3840, 2160, 60"
-          ) -join "`r`n"
-          Set-Content -Path 'C:\IddSampleDriver\option.txt' -Value "$optionTxt" -Encoding UTF8
-          Set-Content -Path 'C:\VirtualDisplayDriver\option.txt' -Value "$optionTxt" -Encoding UTF8
+          ) -join "`r`n";
+          Set-Content -Path 'C:\IddSampleDriver\option.txt' -Value "$optionTxt" -Encoding UTF8;
+          Set-Content -Path 'C:\VirtualDisplayDriver\option.txt' -Value "$optionTxt" -Encoding UTF8;
 
-          $vddXml = @"
-          <?xml version="1.0" encoding="utf-8"?>
-          <vdd_settings>
-              <monitors>
-                  <count>1</count>
-              </monitors>
-              <gpu>
-                  <friendlyname>default</friendlyname>
-              </gpu>
-              <resolutions>
-                  <resolution>
-                      <width>$vWidth</width>
-                      <height>$vHeight</height>
-                      <refresh_rate>$vHz</refresh_rate>
-                  </resolution>
-                  <resolution>
-                      <width>1920</width>
-                      <height>1080</height>
-                      <refresh_rate>60</refresh_rate>
-                  </resolution>
-                  <resolution>
-                      <width>2560</width>
-                      <height>1440</height>
-                      <refresh_rate>60</refresh_rate>
-                  </resolution>
-              </resolutions>
-          </vdd_settings>
-          "@
-          Set-Content -Path 'C:\VirtualDisplayDriver\vdd_settings.xml' -Value "$vddXml" -Encoding UTF8
+          $vddXml = @(
+              '<?xml version="1.0" encoding="utf-8"?>',
+              '<vdd_settings>',
+              '    <monitors><count>1</count></monitors>',
+              '    <gpu><friendlyname>default</friendlyname></gpu>',
+              '    <resolutions>',
+              "        <resolution><width>$vWidth</width><height>$vHeight</height><refresh_rate>$vHz</refresh_rate></resolution>",
+              '        <resolution><width>1920</width><height>1080</height><refresh_rate>60</refresh_rate></resolution>',
+              '        <resolution><width>2560</width><height>1440</height><refresh_rate>60</refresh_rate></resolution>',
+              '    </resolutions>',
+              '</vdd_settings>'
+          ) -join "`r`n";
+          Set-Content -Path 'C:\VirtualDisplayDriver\vdd_settings.xml' -Value "$vddXml" -Encoding UTF8;
 
-          $vddInstalled =$false
+          $vddInstalled = $false;
+          $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD');
+          New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null;
 
-          # Tải nefconw.exe + Driver MttVDD / IddSampleDriver (lưu cache trên ổ X:\)
-          $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD')
-          New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null
-
-          # Phương pháp A: Cài usbmmidd_v2 (Amyuni - Cực kỳ ổn định trên Windows Server 2022/2025 Headless)
           try {
-              $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip')
-              $usbDir = 'C:\usbmmidd_v2'
+              $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip');
+              $usbDir = 'C:\usbmmidd_v2';
               if (-not (Test-Path "$usbZip")) {
-                  Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45
+                  Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45;
               }
               if (Test-Path "$usbZip") {
-                  Expand-Archive -Path "$usbZip" -DestinationPath 'C:\' -Force
+                  Expand-Archive -Path "$usbZip" -DestinationPath 'C:\' -Force;
                   if (Test-Path "$usbDir\deviceinstaller64.exe") {
-                      Push-Location "$usbDir"
-                      # Thêm chứng chỉ nếu có
+                      Push-Location "$usbDir";
                       Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object {
-                          Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null
-                          Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null
-                      }
-                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null
-                      & .\deviceinstaller64.exe enableidd 1 *> $null
-                      Pop-Location
-                      $vddInstalled =$true
-                      Write-Host "│ ✅ Đã cài và bật màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green
+                          Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null;
+                          Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null;
+                      };
+                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null;
+                      & .\deviceinstaller64.exe enableidd 1 *> $null;
+                      Pop-Location;
+                      $vddInstalled = $true;
+                      Write-Host "│ ✅ Đã cài và bật màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
                   }
               }
           } catch {
-              Write-Host "│ ⚠️  USBMMIDD_v2 lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow
+              Write-Host "│ ⚠️  USBMMIDD_v2 lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
-          # Phương pháp B: Cài thêm Virtual-Display-Driver (IddSampleDriver/MttVDD) qua nefconw nếu cần
           if (-not $vddInstalled) {
               try {
-                  $nefZip = [System.IO.Path]::Combine("$vddCacheDir", 'nefcon.zip')
-                  $iddZip = [System.IO.Path]::Combine("$vddCacheDir", 'idd-driver.zip')
+                  $nefZip = [System.IO.Path]::Combine("$vddCacheDir", 'nefcon.zip');
+                  $iddZip = [System.IO.Path]::Combine("$vddCacheDir", 'idd-driver.zip');
                   if (-not (Test-Path "$nefZip")) {
-                      $nefRel = Invoke-RestMethod -Uri 'https://api.github.com/repos/nefarius/nefcon/releases/latest' -TimeoutSec 30$nefAsset = $nefRel.assets \vert{} Where-Object {$_.name -match 'x64.*\.zip|nefcon.*\.zip' } | Select-Object -First 1
+                      $nefRel = Invoke-RestMethod -Uri 'https://api.github.com/repos/nefarius/nefcon/releases/latest' -TimeoutSec 30;
+                      $nefAsset = $nefRel.assets | Where-Object { $_.name -match 'x64.*\.zip|nefcon.*\.zip' } | Select-Object -First 1;
                       if ($nefAsset) {
-                          Invoke-WebRequest -Uri $nefAsset.browser_download_url -OutFile "$nefZip" -UseBasicParsing
+                          Invoke-WebRequest -Uri $nefAsset.browser_download_url -OutFile "$nefZip" -UseBasicParsing;
                       }
                   }
                   if (-not (Test-Path "$iddZip")) {
-                      $iddRel = Invoke-RestMethod -Uri 'https://api.github.com/repos/VirtualDrivers/Virtual-Display-Driver/releases' -TimeoutSec 30$iddAsset = $iddRel.assets \vert{} Where-Object {$_.name -match 'Driver.*x64.*\.zip|Signed-Driver.*x64.*\.zip' } | Select-Object -First 1
+                      $iddRel = Invoke-RestMethod -Uri 'https://api.github.com/repos/VirtualDrivers/Virtual-Display-Driver/releases' -TimeoutSec 30;
+                      $iddAsset = $iddRel.assets | Where-Object { $_.name -match 'Driver.*x64.*\.zip|Signed-Driver.*x64.*\.zip' } | Select-Object -First 1;
                       if ($iddAsset) {
-                          Invoke-WebRequest -Uri $iddAsset.browser_download_url -OutFile "$iddZip" -UseBasicParsing
+                          Invoke-WebRequest -Uri $iddAsset.browser_download_url -OutFile "$iddZip" -UseBasicParsing;
                       }
                   }
                   if ((Test-Path "$nefZip") -and (Test-Path "$iddZip")) {
-                      Expand-Archive -Path "$nefZip" -DestinationPath "$vddCacheDir\nefcon" -Force
-                      Expand-Archive -Path "$iddZip" -DestinationPath 'C:\VirtualDisplayDriver' -Force
-                      $nefExe = Get-ChildItem -Path "$vddCacheDir\nefcon" -Filter 'nefconw.exe' -Recurse | Where-Object { $_.FullName -notmatch 'ARM' } \vert{} Select-Object -First 1$infFile = Get-ChildItem -Path 'C:\VirtualDisplayDriver' -Filter '*.inf' -Recurse | Select-Object -First 1
+                      Expand-Archive -Path "$nefZip" -DestinationPath "$vddCacheDir\nefcon" -Force;
+                      Expand-Archive -Path "$iddZip" -DestinationPath 'C:\VirtualDisplayDriver' -Force;
+                      $nefExe = Get-ChildItem -Path "$vddCacheDir\nefcon" -Filter 'nefconw.exe' -Recurse | Where-Object { $_.FullName -notmatch 'ARM' } | Select-Object -First 1;
+                      $infFile = Get-ChildItem -Path 'C:\VirtualDisplayDriver' -Filter '*.inf' -Recurse | Select-Object -First 1;
                       Get-ChildItem -Path 'C:\VirtualDisplayDriver' -Include '*.cer','*.crt','*.cat' -Recurse | ForEach-Object {
                           try {
-                              $cert = (Get-AuthenticodeSignature$_.FullName).SignerCertificate
+                              $cert = (Get-AuthenticodeSignature $_.FullName).SignerCertificate;
                               if ($cert) {
-                                  $store1 = Get-Item 'Cert:\LocalMachine\Root'$store1.Open('ReadWrite'); $store1.Add($cert); $store1.Close()$store2 = Get-Item 'Cert:\LocalMachine\TrustedPublisher'
-                                  $store2.Open('ReadWrite');$store2.Add($cert);$store2.Close()
+                                  $store1 = Get-Item 'Cert:\LocalMachine\Root';
+                                  $store1.Open('ReadWrite'); $store1.Add($cert); $store1.Close();
+                                  $store2 = Get-Item 'Cert:\LocalMachine\TrustedPublisher';
+                                  $store2.Open('ReadWrite'); $store2.Add($cert); $store2.Close();
                               }
                           } catch {}
-                      }
-                      if ($nefExe -and$infFile) {
-                          $hwId = if ($infFile.Name -match 'MttVDD') { 'Root\MttVDD' } else { 'Root\IddSampleDriver' }
-                          & $nefExe.FullName --create-device-node --hardware-id "$hwId" --class-name Display --class-guid "4D36E968-E325-11CE-BFC1-08002BE10318" --no-duplicates *> $null
-                          & $nefExe.FullName --install-driver --inf-path "$($infFile.FullName)" *> $null
-                          $vddInstalled =$true
-                          Write-Host "│ ✅ Đã cài Virtual Display Driver ($($infFile.Name))" -ForegroundColor Green
+                      };
+                      if ($nefExe -and $infFile) {
+                          $hwId = if ($infFile.Name -match 'MttVDD') { 'Root\MttVDD' } else { 'Root\IddSampleDriver' };
+                          & $nefExe.FullName --create-device-node --hardware-id "$hwId" --class-name Display --class-guid "4D36E968-E325-11CE-BFC1-08002BE10318" --no-duplicates *> $null;
+                          & $nefExe.FullName --install-driver --inf-path "$($infFile.FullName)" *> $null;
+                          $vddInstalled = $true;
+                          Write-Host "│ ✅ Đã cài Virtual Display Driver ($($infFile.Name))" -ForegroundColor Green;
                       }
                   }
               } catch {
-                  Write-Host "│ ⚠️  Không cài được IddSampleDriver phụ: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "│ ⚠️  Không cài được IddSampleDriver phụ: $($_.Exception.Message)" -ForegroundColor Yellow;
               }
           }
 
-          # ─────────────────────────────────────────────────────────────────
-          # 2. KÍCH HOẠT PHIÊN DESKTOP CONSOLE CHO USER CỐ ĐỊNH TRÊN Ổ X:\
-          # ─────────────────────────────────────────────────────────────────
-          Write-Host "👤 2. ĐANG MỞ SẴN PHIÊN MÀN HÌNH ẢO CHO USER CỐ ĐỊNH: $u (Ổ ${dl}:\)..." -ForegroundColor Yellow
+          Write-Host "👤 2. ĐANG MỞ SẴN PHIÊN MÀN HÌNH ẢO CHO USER CỐ ĐỊNH: $u (Ổ ${dl}:\)..." -ForegroundColor Yellow;
           try {
-              # Lưu thông tin đăng nhập loopback để mstsc tự đăng nhập user cố định rồi đẩy vào Console
-              & cmdkey /generic:TERMSRV/127.0.0.1 /user:"$u" /pass:"$p" *> $null
-              Start-Process mstsc.exe -ArgumentList '/v:127.0.0.1', '/w:1920', '/h:1080'
-              $userSessionId =$null
+              & cmdkey /generic:TERMSRV/127.0.0.1 /user:"$u" /pass:"$p" *> $null;
+              Start-Process mstsc.exe -ArgumentList '/v:127.0.0.1', '/w:1920', '/h:1080';
+              $userSessionId = $null;
               for ($w = 0; $w -lt 15; $w++) {
-                  Start-Sleep -Seconds 2
-                  $qLines = @(quser 2>$null)
-                  foreach ($ln in$qLines) {
-                      $clean = ($ln -replace '^>', ' ').Trim() -split '\s+'
+                  Start-Sleep -Seconds 2;
+                  $qLines = @(quser 2>$null);
+                  foreach ($ln in $qLines) {
+                      $clean = ($ln -replace '^>', ' ').Trim() -split '\s+';
                       if ($clean.Count -ge 3 -and $clean[0] -ieq "$u") {
-                          $cand = $clean[1..($clean.Count - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1
+                          $cand = $clean[1..($clean.Count - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if ($cand) {
-                              $userSessionId =$cand
-                              break
+                              $userSessionId = $cand;
+                              break;
                           }
                       }
                   }
-                  if ($userSessionId) { break }
+                  if ($userSessionId) { break; }
               }
 
               if ($userSessionId) {
-                  Start-Sleep -Seconds 3
-                  # Chuyển phiên của User cố định sang Console để gắn trực tiếp vào Màn Hình Ảo
-                  & tscon $userSessionId /dest:console *>$null
-                  Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue
-                  Write-Host "│ ✅ Đã kích hoạt phiên Desktop Console (ID: $userSessionId) gắn với màn hình ảo cho user $u!" -ForegroundColor Green
+                  Start-Sleep -Seconds 3;
+                  & tscon $userSessionId /dest:console *> $null;
+                  Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue;
+                  Write-Host "│ ✅ Đã kích hoạt phiên Desktop Console (ID: $userSessionId) gắn với màn hình ảo cho user $u!" -ForegroundColor Green;
               } else {
-                  Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue
-                  Write-Host "│ ⚠️  Chưa bắt được Session ID tự động, Sunshine sẽ tự bắt khi có kết nối" -ForegroundColor Yellow
+                  Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue;
+                  Write-Host "│ ⚠️  Chưa bắt được Session ID tự động, Sunshine sẽ tự bắt khi có kết nối" -ForegroundColor Yellow;
               }
           } catch {
-              Write-Host "│ ⚠️  Lỗi nhỏ khi kích hoạt Console Session: $($_.Exception.Message)" -ForegroundColor Yellow
+              Write-Host "│ ⚠️  Lỗi nhỏ khi kích hoạt Console Session: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
-          # ─────────────────────────────────────────────────────────────────
-          # 3. TẢI, CÀI ĐẶT & CẤU HÌNH SUNSHINE (MẬT KHẨU CỐ ĐỊNH + LƯU Ổ X:\)
-          # ─────────────────────────────────────────────────────────────────
-          Write-Host "☀️  3. ĐANG TẢI & CÀI ĐẶT SUNSHINE (LƯU TRỮ BỀN VỮNG TRÊN ${dl}:\)..." -ForegroundColor Yellow
+          Write-Host "☀️  3. ĐANG TẢI & CÀI ĐẶT SUNSHINE (LƯU TRỮ BỀN VỮNG TRÊN ${dl}:\)..." -ForegroundColor Yellow;
 
-          $sunInstaller = [System.IO.Path]::Combine("$instCache", 'sunshine-windows-installer.exe')
+          $sunInstaller = [System.IO.Path]::Combine("$instCache", 'sunshine-windows-installer.exe');
           if (-not (Test-Path "$sunInstaller")) {
-              Write-Host "│ ⬇️  Đang tải Sunshine bản mới nhất từ GitHub (lưu vào ${dl}:\ cho các phiên sau)..." -ForegroundColor Cyan
+              Write-Host "│ ⬇️  Đang tải Sunshine bản mới nhất từ GitHub (lưu vào ${dl}:\ cho các phiên sau)..." -ForegroundColor Cyan;
               try {
-                  Invoke-WebRequest -Uri 'https://github.com/LizardByte/Sunshine/releases/latest/download/sunshine-windows-installer.exe' `
-                      -OutFile "$sunInstaller" -UseBasicParsing -TimeoutSec 120
+                  Invoke-WebRequest -Uri 'https://github.com/LizardByte/Sunshine/releases/latest/download/sunshine-windows-installer.exe' -OutFile "$sunInstaller" -UseBasicParsing -TimeoutSec 120;
               } catch {
-                  $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/LizardByte/Sunshine/releases/latest' -TimeoutSec 30
-                  $asset = $rel.assets | Where-Object { $_.name -eq 'sunshine-windows-installer.exe' } | Select-Object -First 1
+                  $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/LizardByte/Sunshine/releases/latest' -TimeoutSec 30;
+                  $asset = $rel.assets | Where-Object { $_.name -eq 'sunshine-windows-installer.exe' } | Select-Object -First 1;
                   if ($asset) {
-                      Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$sunInstaller" -UseBasicParsing -TimeoutSec 120
+                      Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$sunInstaller" -UseBasicParsing -TimeoutSec 120;
                   }
               }
           } else {
-              Write-Host "│ ⚡ Đã có sẵn bộ cài Sunshine trên ổ ${dl}:\ ($sunInstaller), cài đặt ngay!" -ForegroundColor Cyan
+              Write-Host "│ ⚡ Đã có sẵn bộ cài Sunshine trên ổ ${dl}:\ ($sunInstaller), cài đặt ngay!" -ForegroundColor Cyan;
           }
 
-          $sunDir = 'C:\Program Files\Sunshine'
-          $sunExe = "$sunDir\sunshine.exe"
-          $sunCfg = "$sunDir\config"
+          $sunDir = 'C:\Program Files\Sunshine';
+          $sunExe = "$sunDir\sunshine.exe";
+          $sunCfg = "$sunDir\config";
 
           if (Test-Path "$sunInstaller") {
-              Start-Process -FilePath "$sunInstaller" -ArgumentList '/S' -Wait
-              Write-Host "│ ✅ Đã cài đặt Sunshine thành công" -ForegroundColor Green
+              Start-Process -FilePath "$sunInstaller" -ArgumentList '/S' -Wait;
+              Write-Host "│ ✅ Đã cài đặt Sunshine thành công" -ForegroundColor Green;
           } else {
-              Write-Host "│ ⚠️  Không tải được installer, thử cài qua Chocolatey..." -ForegroundColor Yellow
-              choco install sunshine -y --no-progress --limit-output
+              Write-Host "│ ⚠️  Không tải được installer, thử cài qua Chocolatey..." -ForegroundColor Yellow;
+              choco install sunshine -y --no-progress --limit-output;
           }
 
           if (Test-Path "$sunExe") {
-              # Dừng Sunshine tạm thời để gắn Junction cấu hình ổ X:\ và nạp mật khẩu cố định
-              Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue
-              Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue
-              Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 2
+              Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue;
+              Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
+              Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
 
-              # Liên kết thư mục config của Sunshine sang ổ X:\AISTV-SYSTEM\OS-OVERLAY\Sunshine-Config
               if (Test-Path "$sunCfg") {
-                  $item = Get-Item "$sunCfg" -Force
+                  $item = Get-Item "$sunCfg" -Force;
                   if ($item.Attributes -notmatch 'ReparsePoint') {
-                      # Nếu ổ X:\ chưa có file cấu hình gốc thì chép từ C:\ sang X:\ trước
                       if ((Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count -eq 0) {
-                          Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue
+                          Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue;
                       }
-                      Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue
-                      New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null
+                      Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue;
+                      New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null;
                   }
               } else {
-                  New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null
+                  New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null;
               }
-              Write-Host "│ ✅ Đã gắn kết cấu hình Sunshine <-> $sunPersistCfg (Giữ nguyên thiết bị Moonlight đã ghép nối giữa các phiên)" -ForegroundColor Green
+              Write-Host "│ ✅ Đã gắn kết cấu hình Sunshine <-> $sunPersistCfg (Giữ nguyên thiết bị Moonlight đã ghép nối)" -ForegroundColor Green;
 
-              # Tạo cấu hình sunshine.conf tối ưu nếu chưa tồn tại trên ổ X:\
-              $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf')
+              $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf');
               if (-not (Test-Path "$confFile")) {
                   $defaultConf = @(
-                      "sunshine_name = AISTV-Cloud-$($env:MOUNT_LETTER)"
-                      "min_log_level = info"
-                      "origin_web_ui_allowed = wan"
-                      "upnp = disabled"
+                      "sunshine_name = AISTV-Cloud-$($env:MOUNT_LETTER)",
+                      "min_log_level = info",
+                      "origin_web_ui_allowed = wan",
+                      "upnp = disabled",
                       "address_family = both"
-                  ) -join "`r`n"
-                  Set-Content -Path "$confFile" -Value "$defaultConf" -Encoding UTF8
+                  ) -join "`r`n";
+                  Set-Content -Path "$confFile" -Value "$defaultConf" -Encoding UTF8;
               } else {
-                  # Đảm bảo cho phép truy cập Web UI từ mạng Tailscale (origin_web_ui_allowed = wan)
-                  $curConf = Get-Content -Raw -Path "$confFile" -ErrorAction SilentlyContinue
+                  $curConf = Get-Content -Raw -Path "$confFile" -ErrorAction SilentlyContinue;
                   if ("$curConf" -notmatch 'origin_web_ui_allowed') {
-                      Add-Content -Path "$confFile" -Value "`r`norigin_web_ui_allowed = wan" -Encoding UTF8
+                      Add-Content -Path "$confFile" -Value "`r`norigin_web_ui_allowed = wan" -Encoding UTF8;
                   }
               }
 
-              # Cấp toàn quyền thư mục Sunshine cho User cố định
-              & icacls "$sunDir" /grant "${u}:(OI)(CI)F" /T /C /Q *> $null
-              & icacls "$sunPersistCfg" /grant "${u}:(OI)(CI)F" /T /C /Q *> $null
+              & icacls "$sunDir" /grant "${u}:(OI)(CI)F" /T /C /Q *> $null;
+              & icacls "$sunPersistCfg" /grant "${u}:(OI)(CI)F" /T /C /Q *> $null;
 
-              # Đặt CỐ ĐỊNH Username & Password cho Sunshine trùng với User & Mật khẩu cố định
-              Push-Location "$sunDir"
-              & "$sunExe" --creds "$u" "$p" *> $null
-              Pop-Location
-              Write-Host "│ ✅ Đã cài sẵn tài khoản Sunshine cố định -> User: $u | Pass: (Cố định)" -ForegroundColor Green
+              Push-Location "$sunDir";
+              & "$sunExe" --creds "$u" "$p" *> $null;
+              Pop-Location;
+              Write-Host "│ ✅ Đã cài sẵn tài khoản Sunshine cố định -> User: $u | Pass: (Cố định)" -ForegroundColor Green;
 
-              # Bật sẵn dịch vụ Sunshine tự khởi động cùng hệ thống
-              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
+              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
               if ($svcObj) {
-                  Set-Service -Name $svcObj.Name -StartupType Automatic -ErrorAction SilentlyContinue
-                  Start-Service -Name $svcObj.Name -ErrorAction SilentlyContinue
-                  Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running)" -ForegroundColor Green
+                  Set-Service -Name $svcObj.Name -StartupType Automatic -ErrorAction SilentlyContinue;
+                  Start-Service -Name $svcObj.Name -ErrorAction SilentlyContinue;
+                  Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running)" -ForegroundColor Green;
               } else {
-                  # Dự phòng: Tạo Scheduled Task chạy trong phiên của User cố định nếu bản cài không tạo Service
-                  $action    = New-ScheduledTaskAction -Execute "$sunExe" -WorkingDirectory "$sunDir"
-                  $trigger   = New-ScheduledTaskTrigger -AtLogOn -User "$u"
-                  $principal = New-ScheduledTaskPrincipal -UserId "$u" -LogonType Interactive -RunLevel Highest
-                  Register-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
-                  Start-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -ErrorAction SilentlyContinue
-                  Write-Host "│ ✅ Đã bật Sunshine trực tiếp trong phiên của user $u" -ForegroundColor Green
+                  $action    = New-ScheduledTaskAction -Execute "$sunExe" -WorkingDirectory "$sunDir";
+                  $trigger   = New-ScheduledTaskTrigger -AtLogOn -User "$u";
+                  $principal = New-ScheduledTaskPrincipal -UserId "$u" -LogonType Interactive -RunLevel Highest;
+                  Register-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null;
+                  Start-ScheduledTask -TaskName 'AISTV-Sunshine-Autorun' -ErrorAction SilentlyContinue;
+                  Write-Host "│ ✅ Đã bật Sunshine trực tiếp trong phiên của user $u" -ForegroundColor Green;
               }
-              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV"
+              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
           } else {
-              Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red
+              Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red;
           }
-          $global:LASTEXITCODE = 0
-          exit 0
+          $global:LASTEXITCODE = 0;
+          exit 0;
 
       - name: 🔍 KIỂM TRA QUYỀN HỆ THỐNG & SUNSHINE
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "🔍 KIỂM TRA QUYỀN ĐĂNG NHẬP & DỊCH VỤ STREAM" -ForegroundColor Yellow
-          $u = "$env:RDP_USER"
+          Write-Host "";
+          Write-Host "🔍 KIỂM TRA QUYỀN ĐĂNG NHẬP & DỊCH VỤ STREAM" -ForegroundColor Yellow;
+          $u = "$env:RDP_USER";
 
-          $userObj = Get-LocalUser -Name "$u" -ErrorAction SilentlyContinue
+          $userObj = Get-LocalUser -Name "$u" -ErrorAction SilentlyContinue;
           if (-not $userObj) {
-              Write-Host "│ ❌ User không tồn tại" -ForegroundColor Red
-              exit 1
+              Write-Host "│ ❌ User không tồn tại" -ForegroundColor Red;
+              exit 1;
           }
-          Write-Host "│ ✅ User tồn tại (Enabled: $($userObj.Enabled))" -ForegroundColor Green
+          Write-Host "│ ✅ User tồn tại (Enabled: $($userObj.Enabled))" -ForegroundColor Green;
 
-          $adminList = (& net localgroup Administrators 2>$null) -join "`n"
-          $rdpList   = (& net localgroup "Remote Desktop Users" 2>$null) -join "`n"
-          $isAdmin   = $adminList -match [regex]::Escape("$u")
-          $isRdp     = $rdpList -match [regex]::Escape("$u")
+          $adminList = (& net localgroup Administrators 2>$null) -join "`n";
+          $rdpList   = (& net localgroup "Remote Desktop Users" 2>$null) -join "`n";
+          $isAdmin   = $adminList -match [regex]::Escape("$u");
+          $isRdp     = $rdpList -match [regex]::Escape("$u");
 
-          Write-Host "│ $(if ($isAdmin) {'✅'} else {'❌'}) Quyền Administrator"
-          Write-Host "│ $(if ($isRdp) {'✅'} else {'❌'}) Quyền Remote Desktop"
-          Write-Host "│ $(if (Test-Path "$env:PROFILE_PATH") {'✅'} else {'⚠️'}) Profile: $env:PROFILE_PATH"
+          Write-Host "│ $(if ($isAdmin) {'✅'} else {'❌'}) Quyền Administrator";
+          Write-Host "│ $(if ($isRdp) {'✅'} else {'❌'}) Quyền Remote Desktop";
+          Write-Host "│ $(if (Test-Path "$env:PROFILE_PATH") {'✅'} else {'⚠️'}) Profile: $env:PROFILE_PATH";
 
-          $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue
-          Write-Host "│ $(if ($svc.Status -eq 'Running') {'✅'} else {'❌'}) TermService (RDP): $($svc.Status)"
+          $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+          Write-Host "│ $(if ($svc.Status -eq 'Running') {'✅'} else {'❌'}) TermService (RDP): $($svc.Status)";
 
-          $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue
-          Write-Host "│ $(if ($sunProc) {'✅'} else {'⚠️'}) Sunshine Stream Server: $(if ($sunProc) {'Đang chạy (PID: ' + ($sunProc.Id -join ', ') + ')'} else {'Chờ kết nối'})"
+          $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
+          Write-Host "│ $(if ($sunProc) {'✅'} else {'⚠️'}) Sunshine Stream Server: $(if ($sunProc) {'Đang chạy (PID: ' + ($sunProc.Id -join ', ') + ')'} else {'Chờ kết nối'})";
 
-          $displays = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue)
-          Write-Host "│ ✅ Số màn hình hoạt động (gồm Màn hình ảo): $($displays.Count)"
-          exit 0
+          $displays = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue);
+          Write-Host "│ ✅ Số màn hình hoạt động (gồm Màn hình ảo): $($displays.Count)";
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 7. TAILSCALE
@@ -1199,50 +1142,50 @@ jobs:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG" -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG" -ForegroundColor Yellow;
 
           if (-not "$env:TAILSCALE_AUTH_KEY") {
-              Write-Host "❌ Thiếu secret TAILSCALE_AUTH_KEY" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Thiếu secret TAILSCALE_AUTH_KEY" -ForegroundColor Red;
+              exit 1;
           }
 
-          $msiPath = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi')
-          $ProgressPreference = 'SilentlyContinue'
+          $msiPath = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi');
+          $ProgressPreference = 'SilentlyContinue';
           if (-not (Test-Path "$msiPath")) {
-              Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiPath"
+              Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiPath";
           }
-          Start-Process msiexec.exe -ArgumentList '/i', "`"$msiPath`"", '/quiet', '/norestart' -Wait
-          Write-Host "│ ✅ Đã cài Tailscale" -ForegroundColor Green
+          Start-Process msiexec.exe -ArgumentList '/i', "`"$msiPath`"", '/quiet', '/norestart' -Wait;
+          Write-Host "│ ✅ Đã cài Tailscale" -ForegroundColor Green;
 
-          Start-Sleep -Seconds 10
-          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+          Start-Sleep -Seconds 10;
+          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe";
 
-          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=ai-stv-premium-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset
+          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=ai-stv-premium-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset;
           if ($LASTEXITCODE -ne 0) {
-              Write-Host "❌ Lỗi kết nối Tailscale" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Lỗi kết nối Tailscale" -ForegroundColor Red;
+              exit 1;
           }
-          Write-Host "│ ✅ Kết nối Tailscale thành công" -ForegroundColor Green
+          Write-Host "│ ✅ Kết nối Tailscale thành công" -ForegroundColor Green;
 
-          $ip = $null
+          $ip = $null;
           for ($i = 0; $i -lt 20; $i++) {
-              $out = (& "$ts" ip -4 2>&1 | Out-String).Trim()
+              $out = (& "$ts" ip -4 2>&1 | Out-String).Trim();
               if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') {
-                  $ip = "$out"
-                  break
+                  $ip = "$out";
+                  break;
               }
-              Start-Sleep -Seconds 3
+              Start-Sleep -Seconds 3;
           }
 
           if (-not "$ip") {
-              Write-Host "❌ Không lấy được IP Tailscale" -ForegroundColor Red
-              exit 1
+              Write-Host "❌ Không lấy được IP Tailscale" -ForegroundColor Red;
+              exit 1;
           }
 
-          "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
-          Write-Host "✅ Địa chỉ IP: $ip" -ForegroundColor Green
-          exit 0
+          "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV";
+          Write-Host "✅ Địa chỉ IP: $ip" -ForegroundColor Green;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 8. DUCKDNS
@@ -1254,44 +1197,44 @@ jobs:
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
           DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
         run: |
-          Write-Host ""
-          Write-Host "🦆 ĐANG CẬP NHẬT DUCKDNS" -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "🦆 ĐANG CẬP NHẬT DUCKDNS" -ForegroundColor Yellow;
 
           if (-not "$env:DUCKDNS_TOKEN" -or -not "$env:DUCKDNS_DOMAIN") {
-              Write-Host "⚠️ Thiếu secret DUCKDNS_TOKEN hoặc DUCKDNS_DOMAIN, bỏ qua DuckDNS" -ForegroundColor Yellow
-              exit 0
+              Write-Host "⚠️ Thiếu secret DUCKDNS_TOKEN hoặc DUCKDNS_DOMAIN, bỏ qua DuckDNS" -ForegroundColor Yellow;
+              exit 0;
           }
           if (-not "$env:TAILSCALE_IP") {
-              Write-Host "⚠️ Chưa có IP Tailscale, bỏ qua DuckDNS" -ForegroundColor Yellow
-              exit 0
+              Write-Host "⚠️ Chưa có IP Tailscale, bỏ qua DuckDNS" -ForegroundColor Yellow;
+              exit 0;
           }
 
-          $domain = ("$env:DUCKDNS_DOMAIN".Trim().ToLower()) -replace '\.duckdns\.org$', ''
+          $domain = ("$env:DUCKDNS_DOMAIN".Trim().ToLower()) -replace '\.duckdns\.org$', '';
           if ("$domain" -notmatch '^[a-z0-9-]+$') {
-              Write-Host "⚠️ DUCKDNS_DOMAIN không hợp lệ (chỉ nhập 1 tên, vd: myrdp)" -ForegroundColor Yellow
-              exit 0
+              Write-Host "⚠️ DUCKDNS_DOMAIN không hợp lệ (chỉ nhập 1 tên, vd: myrdp)" -ForegroundColor Yellow;
+              exit 0;
           }
 
-          $ok = $false
+          $ok = $false;
           for ($i = 1; $i -le 3; $i++) {
               try {
-                  $uri = "https://www.duckdns.org/update?domains=$domain&token=$($env:DUCKDNS_TOKEN)&ip=$($env:TAILSCALE_IP)"
-                  $res = Invoke-RestMethod -Uri "$uri" -TimeoutSec 20
+                  $uri = "https://www.duckdns.org/update?domains=$domain&token=$($env:DUCKDNS_TOKEN)&ip=$($env:TAILSCALE_IP)";
+                  $res = Invoke-RestMethod -Uri "$uri" -TimeoutSec 20;
                   if ("$res".Trim() -eq 'OK') {
-                      $ok = $true
-                      break
+                      $ok = $true;
+                      break;
                   }
               } catch {}
-              Start-Sleep -Seconds 5
+              Start-Sleep -Seconds 5;
           }
 
           if ($ok) {
-              "DUCKDNS_HOST=${domain}.duckdns.org" >> "$env:GITHUB_ENV"
-              Write-Host "✅ ${domain}.duckdns.org -> $env:TAILSCALE_IP" -ForegroundColor Green
+              "DUCKDNS_HOST=${domain}.duckdns.org" >> "$env:GITHUB_ENV";
+              Write-Host "✅ ${domain}.duckdns.org -> $env:TAILSCALE_IP" -ForegroundColor Green;
           } else {
-              Write-Host "⚠️ DuckDNS trả KO hoặc lỗi mạng (kiểm tra lại token / tên miền)" -ForegroundColor Yellow
+              Write-Host "⚠️ DuckDNS trả KO hoặc lỗi mạng (kiểm tra lại token / tên miền)" -ForegroundColor Yellow;
           }
-          exit 0
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 9. KHỞI CHẠY WEB PANEL QUẢN LÝ & HIỂN THỊ KẾT NỐI
@@ -1301,187 +1244,140 @@ jobs:
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
         run: |
-          $savePass = $null
+          $savePass = $null;
           if ("$env:RDP_PASS_SOURCE" -ne 'secret') {
-              $savePass = "$env:RDP_PASS"
+              $savePass = "$env:RDP_PASS";
           }
 
-          $userSid = (Get-LocalUser -Name "$env:RDP_USER").SID.Value
+          $userSid = (Get-LocalUser -Name "$env:RDP_USER").SID.Value;
           $state = [ordered]@{
-              user            = "$env:RDP_USER"
-              sid             = "$userSid"
-              password        = $savePass
-              passwordSource  = "$env:RDP_PASS_SOURCE"
-              windowsImage    = "$env:WINDOWS_IMAGE"
-              osBuild         = "$env:OS_BUILD"
-              driveLetter     = "$env:MOUNT_LETTER"
-              tailscaleIp     = "$env:TAILSCALE_IP"
-              durationMinutes = [int]"$env:TOTAL_MINUTES"
-              startUtc        = (Get-Date).ToUniversalTime().ToString('o')
-              runId           = "$env:GITHUB_RUN_ID"
-              lastUpdatedUtc  = (Get-Date).ToUniversalTime().ToString('o')
-          }
-          $stateFilePath = "$env:SHARED_STATE_FILE"
-          $state | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path "$stateFilePath" -Encoding UTF8
+              user            = "$env:RDP_USER";
+              sid             = "$userSid";
+              password        = $savePass;
+              passwordSource  = "$env:RDP_PASS_SOURCE";
+              windowsImage    = "$env:WINDOWS_IMAGE";
+              osBuild         = "$env:OS_BUILD";
+              driveLetter     = "$env:MOUNT_LETTER";
+              tailscaleIp     = "$env:TAILSCALE_IP";
+              durationMinutes = [int]"$env:TOTAL_MINUTES";
+              startUtc        = (Get-Date).ToUniversalTime().ToString('o');
+              runId           = "$env:GITHUB_RUN_ID";
+              lastUpdatedUtc  = (Get-Date).ToUniversalTime().ToString('o');
+          };
+          $stateFilePath = "$env:SHARED_STATE_FILE";
+          $state | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path "$stateFilePath" -Encoding UTF8;
 
-          $keep = [System.IO.Path]::Combine("$env:SHARED_DATA_DIR", '.gitkeep')
+          $keep = [System.IO.Path]::Combine("$env:SHARED_DATA_DIR", '.gitkeep');
           if (-not (Test-Path "$keep")) {
-              New-Item -ItemType File -Path "$keep" -Force | Out-Null
+              New-Item -ItemType File -Path "$keep" -Force | Out-Null;
           }
 
-          # Tạo Web Server quản lý tắt / khởi động lại / lưu dữ liệu an toàn
-          $webScript = @'
-          $ErrorActionPreference = 'Continue'
-          $listener = [System.Net.HttpListener]::new()
-          $listener.Prefixes.Add("http://+:$($env:WEB_PORT)/")
-          $listener.Start()
+          $_ = ''; $webScript = @'
+          $ErrorActionPreference = 'Continue';
+          $listener = [System.Net.HttpListener]::new();
+          $listener.Prefixes.Add("http://+:$($env:WEB_PORT)/");
+          $listener.Start();
 
-          $endEpoch = [long]"$env:JOB_START_EPOCH" + ([long]"$env:TOTAL_MINUTES" * 60)
+          $endEpoch = [long]"$env:JOB_START_EPOCH" + ([long]"$env:TOTAL_MINUTES" * 60);
 
           while ($listener.IsListening) {
               try {
-                  $ctx  = $listener.GetContext()
-                  $req  = $ctx.Request
-                  $resp = $ctx.Response
-                  $path = $req.Url.AbsolutePath.ToLower()
+                  $ctx  = $listener.GetContext();
+                  $req  = $ctx.Request;
+                  $resp = $ctx.Response;
+                  $path = $req.Url.AbsolutePath.ToLower();
 
-                  $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-                  $remain = [math]::Max(0, $endEpoch - $now)
-                  $h      = [math]::Floor($remain / 3600)
-                  $m      = [math]::Floor(($remain % 3600) / 60)
-                  $s      = $remain % 60
+                  $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
+                  $remain = [math]::Max(0, $endEpoch - $now);
+                  $h      = [math]::Floor($remain / 3600);
+                  $m      = [math]::Floor(($remain % 3600) / 60);
+                  $s      = $remain % 60;
 
-                  $statusMsg = ''
+                  $statusMsg = '';
                   if ($req.HttpMethod -eq 'POST') {
                       if ($path -eq '/action/save') {
-                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'SAVE_NOW' -Encoding UTF8
-                          $statusMsg = '✅ Đã gửi lệnh LƯU NGAY! Kiểm tra log GitHub Actions (quá trình nén mất khoảng 20-40 giây, máy vẫn hoạt động bình thường).'
+                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'SAVE_NOW' -Encoding UTF8;
+                          $statusMsg = '✅ Đã gửi lệnh LƯU NGAY! Kiểm tra log GitHub Actions (quá trình nén mất khoảng 20-40 giây, máy vẫn hoạt động bình thường).';
                       } elseif ($path -eq '/action/restart') {
-                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'RESTART_SESSION' -Encoding UTF8
-                          $statusMsg = '🔁 Đã gửi lệnh LƯU & KHỞI ĐỘNG PHIÊN MỚI! Hệ thống sẽ đóng gói ổ đĩa đẩy lên GitHub và bật phiên mới...'
+                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'RESTART_SESSION' -Encoding UTF8;
+                          $statusMsg = '🔁 Đã gửi lệnh LƯU & KHỞI ĐỘNG PHIÊN MỚI! Hệ thống sẽ đóng gói ổ đĩa đẩy lên GitHub và bật phiên mới...';
                       } elseif ($path -eq '/action/stop') {
-                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'STOP_SESSION' -Encoding UTF8
-                          $statusMsg = '🛑 Đã gửi lệnh LƯU & TẮT HẲN SERVER! Hệ thống sẽ đóng gói toàn bộ ổ đĩa lên GitHub trước khi tắt...'
+                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value 'STOP_SESSION' -Encoding UTF8;
+                          $statusMsg = '🛑 Đã gửi lệnh LƯU & TẮT HẲN SERVER! Hệ thống sẽ đóng gói toàn bộ ổ đĩa lên GitHub trước khi tắt...';
                       }
                   }
 
-                  $bannerHtml = ''
+                  $bannerHtml = '';
                   if ($statusMsg) {
-                      $bannerHtml = "<div class='alert'>$statusMsg</div>"
+                      $bannerHtml = "<div class='alert'>$statusMsg</div>";
                   }
 
-                  $html = @"
-          <!DOCTYPE html>
-          <html lang="vi">
-          <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>AI-STV RDP & Sunshine Control Panel</title>
-              <style>
-                  * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
-                  body { background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; }
-                  .card { max-width: 560px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
-                  h1 { margin: 0 0 8px 0; font-size: 22px; color: #38bdf8; }
-                  .sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
-                  .info { background: #0f172a; border-radius: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid #1e293b; }
-                  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
-                  .row:last-child { border-bottom: none; }
-                  .val { font-weight: 600; color: #4ade80; }
-                  .val a { color: #facc15; text-decoration: none; }
-                  .alert { background: #065f46; color: #ecfdf5; padding: 14px; border-radius: 10px; margin-bottom: 18px; font-size: 14px; line-height: 1.5; border: 1px solid #10b981; }
-                  form { margin-bottom: 12px; }
-                  button { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; text-align: left; display: flex; align-items: center; justify-content: space-between; }
-                  button:hover { opacity: 0.9; }
-                  .btn-save { background: #0284c7; color: white; }
-                  .btn-restart { background: #d97706; color: white; }
-                  .btn-stop { background: #dc2626; color: white; }
-                  .note { font-size: 12px; color: #94a3b8; margin-top: 14px; line-height: 1.5; }
-              </style>
-          </head>
-          <body>
-              <div class="card">
-                  <h1>🎛️ Bảng Điều Khiển AI-STV (RDP + Sunshine)</h1>
-                  <div class="sub">Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Sunshine Stream, Tắt máy & Chuyển phiên an toàn</div>
-                  $bannerHtml
-                  <div class="info">
-                      <div class="row"><span>🌐 IP Tailscale (RDP / Moonlight):</span><span class="val">$($env:TAILSCALE_IP)</span></div>
-                      <div class="row"><span>☀️ Sunshine Web UI (Nhập PIN):</span><span class="val"><a href="https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" target="_blank">https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>
-                      <div class="row"><span>👤 Tài khoản RDP & Sunshine:</span><span class="val">$($env:RDP_USER)</span></div>
-                      <div class="row"><span>💽 Ổ đĩa lưu trữ:</span><span class="val">$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>
-                      <div class="row"><span>⏳ Thời gian còn lại:</span><span class="val">${h}h ${m}m ${s}s</span></div>
-                  </div>
-                  <form method="POST" action="/action/save">
-                      <button type="submit" class="btn-save">
-                          <span>💾 Lưu Dữ Liệu Ngay (Không tắt máy)</span>
-                          <span>→</span>
-                      </button>
-                  </form>
-                  <form method="POST" action="/action/restart" onsubmit="return confirm('Hệ thống sẽ đăng xuất RDP, nén lưu 100% ổ đĩa lên GitHub rồi tự bật phiên mới. Tiếp tục?');">
-                      <button type="submit" class="btn-restart">
-                          <span>🔁 Lưu Ổ Đĩa & Khởi Động Phiên Mới Ngay</span>
-                          <span>→</span>
-                      </button>
-                  </form>
-                  <form method="POST" action="/action/stop" onsubmit="return confirm('Hệ thống sẽ đăng xuất RDP, nén lưu 100% ổ đĩa lên GitHub rồi TẮT HẲN (không bật phiên mới). Tiếp tục?');">
-                      <button type="submit" class="btn-stop">
-                          <span>🛑 Lưu Ổ Đĩa & Tắt Hẳn Server</span>
-                          <span>→</span>
-                      </button>
-                  </form>
-                  <div class="note">
-                      💡 <b>Lưu ý quan trọng:</b> Luôn tắt hoặc khởi động lại bằng nút trên trang web này để GitHub dành trọn vẹn thời gian nén và tải ổ đĩa lên Release.
-                  </div>
-              </div>
-          </body>
-          </html>
-          "@
-                  $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
-                  $resp.ContentType = 'text/html; charset=utf-8'
-                  $resp.ContentLength64 = $buf.Length
-                  $resp.OutputStream.Write($buf, 0, $buf.Length)
-                  $resp.OutputStream.Close()
+                  $htmlLines = @(
+                      '<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AI-STV RDP & Sunshine Control Panel</title>',
+                      '<style>* { box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; } body { background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; } .card { max-width: 560px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); } h1 { margin: 0 0 8px 0; font-size: 22px; color: #38bdf8; } .sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; } .info { background: #0f172a; border-radius: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid #1e293b; } .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 14px; } .row:last-child { border-bottom: none; } .val { font-weight: 600; color: #4ade80; } .val a { color: #facc15; text-decoration: none; } .alert { background: #065f46; color: #ecfdf5; padding: 14px; border-radius: 10px; margin-bottom: 18px; font-size: 14px; line-height: 1.5; border: 1px solid #10b981; } form { margin-bottom: 12px; } button { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; text-align: left; display: flex; align-items: center; justify-content: space-between; } button:hover { opacity: 0.9; } .btn-save { background: #0284c7; color: white; } .btn-restart { background: #d97706; color: white; } .btn-stop { background: #dc2626; color: white; } .note { font-size: 12px; color: #94a3b8; margin-top: 14px; line-height: 1.5; }</style></head><body>',
+                      '<div class="card"><h1>🎛️ Bảng Điều Khiển AI-STV (RDP + Sunshine)</h1>',
+                      "<div class='sub'>Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Sunshine Stream, Tắt máy & Chuyển phiên an toàn</div>",
+                      "$bannerHtml",
+                      '<div class="info">',
+                      "<div class='row'><span>🌐 IP Tailscale (RDP / Moonlight):</span><span class='val'>$($env:TAILSCALE_IP)</span></div>",
+                      "<div class='row'><span>☀️ Sunshine Web UI (Nhập PIN):</span><span class='val'><a href='https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/' target='_blank'>https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>",
+                      "<div class='row'><span>👤 Tài khoản RDP & Sunshine:</span><span class='val'>$($env:RDP_USER)</span></div>",
+                      "<div class='row'><span>💽 Ổ đĩa lưu trữ:</span><span class='val'>$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>",
+                      "<div class='row'><span>⏳ Thời gian còn lại:</span><span class='val'>${h}h ${m}m ${s}s</span></div>",
+                      '</div>',
+                      '<form method="POST" action="/action/save"><button type="submit" class="btn-save"><span>💾 Lưu Dữ Liệu Ngay (Không tắt máy)</span><span>→</span></button></form>',
+                      '<form method="POST" action="/action/restart" onsubmit="return confirm(''Hệ thống sẽ đăng xuất RDP, nén lưu 100% ổ đĩa lên GitHub rồi tự bật phiên mới. Tiếp tục?'');"><button type="submit" class="btn-restart"><span>🔁 Lưu Ổ Đĩa & Khởi Động Phiên Mới Ngay</span><span>→</span></button></form>',
+                      '<form method="POST" action="/action/stop" onsubmit="return confirm(''Hệ thống sẽ đăng xuất RDP, nén lưu 100% ổ đĩa lên GitHub rồi TẮT HẲN (không bật phiên mới). Tiếp tục?'');"><button type="submit" class="btn-stop"><span>🛑 Lưu Ổ Đĩa & Tắt Hẳn Server</span><span>→</span></button></form>',
+                      '<div class="note">💡 <b>Lưu ý quan trọng:</b> Luôn tắt hoặc khởi động lại bằng nút trên trang web này để GitHub dành trọn vẹn thời gian nén và tải ổ đĩa lên Release.</div></div></body></html>'
+                  );
+                  $html = $htmlLines -join "`r`n";
+                  $buf = [System.Text.Encoding]::UTF8.GetBytes($html);
+                  $resp.ContentType = 'text/html; charset=utf-8';
+                  $resp.ContentLength64 = $buf.Length;
+                  $resp.OutputStream.Write($buf, 0, $buf.Length);
+                  $resp.OutputStream.Close();
               } catch {}
           }
           '@
-          $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1')
-          Set-Content -Path "$webScriptPath" -Value $webScript -Encoding UTF8
-          Start-Process pwsh.exe -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', "`"$webScriptPath`""
-          Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green
-          exit 0
+          $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1');
+          Set-Content -Path "$webScriptPath" -Value $webScript -Encoding UTF8;
+          Start-Process pwsh.exe -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', "`"$webScriptPath`"";
+          Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green;
+          exit 0;
 
       - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + MÀN HÌNH ẢO)
         shell: pwsh
         run: |
-          $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time')
-          $start = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds([long]"$env:JOB_START_EPOCH").UtcDateTime, $tz)
-          $end   = $start.AddMinutes([int]"$env:TOTAL_MINUTES")
+          $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
+          $start = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds([long]"$env:JOB_START_EPOCH").UtcDateTime, $tz);
+          $end   = $start.AddMinutes([int]"$env:TOTAL_MINUTES");
 
-          $passText = "$env:RDP_PASS"
+          $passText = "$env:RDP_PASS";
           if ("$env:RDP_PASS_SOURCE" -eq 'secret') {
-              $passText = '(dùng secret RDP_PASSWORD)'
+              $passText = '(dùng secret RDP_PASSWORD)';
           }
 
-          Write-Host ""
-          Write-Host "┌──────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
-          Write-Host "│         🎉 RDP + SUNSHINE + Ổ ĐĨA GITHUB SẴN SÀNG!       │" -ForegroundColor Cyan
-          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Host "│ 🌐  IP Tailscale  : $env:TAILSCALE_IP (RDP: 3389 | Moonlight)" -ForegroundColor White
-          Write-Host "│ ☀️  Sunshine Web  : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "│ 🎛️  Web Quản Lý   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "┌──────────────────────────────────────────────────────────┐" -ForegroundColor Cyan;
+          Write-Host "│         🎉 RDP + SUNSHINE + Ổ ĐĨA GITHUB SẴN SÀNG!       │" -ForegroundColor Cyan;
+          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
+          Write-Host "│ 🌐  IP Tailscale  : $env:TAILSCALE_IP (RDP: 3389 | Moonlight)" -ForegroundColor White;
+          Write-Host "│ ☀️  Sunshine Web  : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "│ 🎛️  Web Quản Lý   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
           if ("$env:DUCKDNS_HOST") {
-              Write-Host "│ 🦆  Tên miền      : $env:DUCKDNS_HOST" -ForegroundColor White
+              Write-Host "│ 🦆  Tên miền      : $env:DUCKDNS_HOST" -ForegroundColor White;
           }
-          Write-Host "│ 👤  Tài khoản     : $env:RDP_USER (Dùng chung cho cả RDP & Sunshine)" -ForegroundColor Green
-          Write-Host "│ 🔐  Mật khẩu      : $passText (Cố định)" -ForegroundColor Green
-          Write-Host "│ 🖥️  Màn hình ảo   : ${{ inputs.vdd_resolution }} (Đã bật sẵn trên Console)" -ForegroundColor Green
-          Write-Host "│ 💽  Ổ đĩa riêng   : $($env:MOUNT_LETTER):\ ($env:SHARED_ROOT)" -ForegroundColor Green
-          Write-Host "│ 👤  Profile       : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green
-          Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White
-          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow
-          Write-Host "│ 💡 Ghép nối Moonlight được lưu sẵn vào ổ $($env:MOUNT_LETTER):\, phiên sau tự nhận!" -ForegroundColor Yellow
-          Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
-          exit 0
+          Write-Host "│ 👤  Tài khoản     : $env:RDP_USER (Dùng chung cho cả RDP & Sunshine)" -ForegroundColor Green;
+          Write-Host "│ 🔐  Mật khẩu      : $passText (Cố định)" -ForegroundColor Green;
+          Write-Host "│ 🖥️  Màn hình ảo   : ${{ inputs.vdd_resolution }} (Đã bật sẵn trên Console)" -ForegroundColor Green;
+          Write-Host "│ 💽  Ổ đĩa riêng   : $($env:MOUNT_LETTER):\ ($env:SHARED_ROOT)" -ForegroundColor Green;
+          Write-Host "│ 👤  Profile       : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green;
+          Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
+          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
+          Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow;
+          Write-Host "│ 💡 Ghép nối Moonlight được lưu sẵn vào ổ $($env:MOUNT_LETTER):\, phiên sau tự nhận!" -ForegroundColor Yellow;
+          Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 10. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
@@ -1490,98 +1386,94 @@ jobs:
         id: keepalive
         shell: pwsh
         run: |
-          $tz         = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time')
-          $endEpoch   = [long]"$env:JOB_START_EPOCH" + ([long]"$env:TOTAL_MINUTES" * 60)
-          $endLocal   = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds($endEpoch).UtcDateTime, $tz)
-          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
-          $sigFile    = "$env:CONTROL_SIGNAL_FILE"
-          $u          = "$env:RDP_USER"
+          $tz         = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
+          $endEpoch   = [long]"$env:JOB_START_EPOCH" + ([long]"$env:TOTAL_MINUTES" * 60);
+          $endLocal   = [System.TimeZoneInfo]::ConvertTimeFromUtc([DateTimeOffset]::FromUnixTimeSeconds($endEpoch).UtcDateTime, $tz);
+          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
+          $sigFile    = "$env:CONTROL_SIGNAL_FILE";
+          $u          = "$env:RDP_USER";
 
-          Write-Host ""
-          Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow
-          Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389" -ForegroundColor Cyan
-          Write-Host "☀️ Sunshine Web UI : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "🎛️ Web Quản Lý     : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "🕐 Kết thúc dự kiến: $($endLocal.ToString('HH:mm:ss'))" -ForegroundColor Green
-          Write-Host ""
+          Write-Host "";
+          Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow;
+          Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389" -ForegroundColor Cyan;
+          Write-Host "☀️ Sunshine Web UI : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "🎛️ Web Quản Lý     : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "🕐 Kết thúc dự kiến: $($endLocal.ToString('HH:mm:ss'))" -ForegroundColor Green;
+          Write-Host "";
 
-          $lastLog = (Get-Date).AddHours(-1)
-          $warned  = $false
+          $lastLog = (Get-Date).AddHours(-1);
+          $warned  = $false;
 
           while ($true) {
-              # Kiểm tra lệnh từ Web Quản Lý mỗi 2 giây
               if (Test-Path "$sigFile") {
-                  $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim()
-                  Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue
+                  $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim();
+                  Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue;
 
                   if ($cmd -eq 'SAVE_NOW') {
-                      Write-Host "💾 [WEB-PANEL] Nhận lệnh LƯU NGAY từ Web Quản Lý..." -ForegroundColor Cyan
-                      & "$saveScript" -Reason 'manual-web-save'
-                      $global:LASTEXITCODE = 0
+                      Write-Host "💾 [WEB-PANEL] Nhận lệnh LƯU NGAY từ Web Quản Lý..." -ForegroundColor Cyan;
+                      & "$saveScript" -Reason 'manual-web-save';
+                      $global:LASTEXITCODE = 0;
                   } elseif ($cmd -eq 'RESTART_SESSION') {
-                      Write-Host "🔁 [WEB-PANEL] Nhận lệnh LƯU & KHỞI ĐỘNG LẠI PHIÊN MỚI từ Web Quản Lý!" -ForegroundColor Yellow
-                      'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"
-                      break
+                      Write-Host "🔁 [WEB-PANEL] Nhận lệnh LƯU & KHỞI ĐỘNG LẠI PHIÊN MỚI từ Web Quản Lý!" -ForegroundColor Yellow;
+                      'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV";
+                      break;
                   } elseif ($cmd -eq 'STOP_SESSION') {
-                      Write-Host "🛑 [WEB-PANEL] Nhận lệnh LƯU & TẮT HẲN SERVER từ Web Quản Lý!" -ForegroundColor Red
-                      'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV"
-                      break
+                      Write-Host "🛑 [WEB-PANEL] Nhận lệnh LƯU & TẮT HẲN SERVER từ Web Quản Lý!" -ForegroundColor Red;
+                      'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV";
+                      break;
                   }
               }
 
-              # Tự động đẩy phiên của User cố định về Console nếu vừa ngắt RDP (Disc) để Sunshine không bị đen màn hình
               try {
-                  $qLines = @(quser 2>$null)
-                  foreach ($ln in $qLines) {
+                  $qLines = @(quser 2>$null);
+                  foreach ($ln in$qLines) {
                       if ($ln -match "^\s*$([regex]::Escape($u))\s+(\d+)\s+Disc") {
-                          $discId = $Matches[1]
-                          & tscon $discId /dest:console *> $null
+                          $discId =$Matches[1];
+                          & tscon $discId /dest:console *>$null;
                       }
                   }
               } catch {}
 
-              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-              $remain = $endEpoch - $now
+              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();$remain = $endEpoch -$now;
               if ($remain -le 0) {
-                  Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow
-                  break
+                  Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow;
+                  break;
               }
 
-              if (((Get-Date) - $lastLog).TotalMinutes -ge 5) {
-                  $svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue
-                  $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue
-                  $sunStat = if ($sunProc) { 'Running' } else { 'Stopped' }
-                  $h = [math]::Floor($remain / 3600)
-                  $m = [math]::Floor(($remain % 3600) / 60)
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine: $sunStat | Còn lại: ${h}h ${m}m | Web: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Blue
-                  $lastLog = Get-Date
+              if (((Get-Date) - $lastLog).TotalMinutes -ge 5) {$svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+                  $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
+                  $sunStat = if ($sunProc) { 'Running' } else { 'Stopped' };
+                  $h = [math]::Floor($remain / 3600);
+                  $m = [math]::Floor(($remain % 3600) / 60);
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine:$sunStat | Còn lại: ${h}h${m}m | Web: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Blue;
+                  $lastLog = Get-Date;
               }
 
-              $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue
-              if ($svc -and $svc.Status -ne 'Running') {
-                  Start-Service -Name TermService -ErrorAction SilentlyContinue
+              $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+              if ($svc -and$svc.Status -ne 'Running') {
+                  Start-Service -Name TermService -ErrorAction SilentlyContinue;
               }
 
               if (-not (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue)) {
-                  $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
+                  $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
                   if ($sunSvc) {
-                      Start-Service -Name $sunSvc.Name -ErrorAction SilentlyContinue
+                      Start-Service -Name $sunSvc.Name -ErrorAction SilentlyContinue;
                   }
               }
 
-              if (-not $warned -and $remain -le 300) {
+              if (-not $warned -and$remain -le 300) {
                   try {
-                      msg * /TIME:290 "Phien RDP/Sunshine sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!"
+                      msg * /TIME:290 "Phien RDP/Sunshine sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
-                  $warned = $true
+                  $warned =$true;
               }
 
-              Start-Sleep -Seconds 2
+              Start-Sleep -Seconds 2;
           }
 
-          Write-Host ""
-          Write-Host "🎯 CHUYỂN SANG BƯỚC ĐÓNG GÓI & LƯU DỮ LIỆU AN TOÀN..." -ForegroundColor Green
-          exit 0
+          Write-Host "";
+          Write-Host "🎯 CHUYỂN SANG BƯỚC ĐÓNG GÓI & LƯU DỮ LIỆU AN TOÀN..." -ForegroundColor Green;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 11. LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
@@ -1590,42 +1482,41 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
+          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           if (-not (Test-Path "$saveScript")) {
-              Write-Host 'ℹ️ Không có script lưu, bỏ qua' -ForegroundColor Cyan
-              exit 0
+              Write-Host 'ℹ️ Không có script lưu, bỏ qua' -ForegroundColor Cyan;
+              exit 0;
           }
 
-          # Dừng Sunshine trước khi đóng gói để nhả khóa file log/config
-          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue
-          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue
+          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
+          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
 
-          $u = "$env:RDP_USER"
+          $u = "$env:RDP_USER";
           if ("$u") {
               try {
-                  $loggedOff = $false
+                  $loggedOff =$false;
                   (quser 2>$null) | Select-Object -Skip 1 | ForEach-Object {
-                      $parts = (($_ -replace '^>', ' ').Trim()) -split '\s+'
+                      $parts = (($_ -replace '^>', ' ').Trim()) -split '\s+';
                       if ($parts.Count -gt 1 -and $parts[0] -ieq "$u") {
-                          $id = $parts[1..($parts.Count - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1
+                          $id = $parts[1..($parts.Count - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if ($id) {
-                              logoff $id 2>&1 | Out-Null
-                              $loggedOff = $true
+                              logoff $id 2>&1 | Out-Null;
+                              $loggedOff =$true;
                           }
                       }
-                  }
+                  };
                   if ($loggedOff) {
-                      Write-Host "🔒 Đã đăng xuất user $u, chờ 5 giây nhả khóa file trước khi đóng gói..." -ForegroundColor Cyan
-                      Start-Sleep -Seconds 5
+                      Write-Host "🔒 Đã đăng xuất user $u, chờ 5 giây nhả khóa file trước khi đóng gói..." -ForegroundColor Cyan;
+                      Start-Sleep -Seconds 5;
                   }
               } catch {
-                  Write-Host "⚠️ Không đăng xuất được user: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "⚠️ Không đăng xuất được user: $($_.Exception.Message)" -ForegroundColor Yellow;
               }
           }
 
-          & "$saveScript" -Reason 'session-end'
-          $global:LASTEXITCODE = 0
-          exit 0
+          & "$saveScript" -Reason 'session-end';
+          $global:LASTEXITCODE = 0;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 12. DỌN DẸP HỆ THỐNG
@@ -1634,43 +1525,43 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "🧹 ĐANG DỌN DẸP HỆ THỐNG..." -ForegroundColor Yellow
+          Write-Host "";
+          Write-Host "🧹 ĐANG DỌN DẸP HỆ THỐNG..." -ForegroundColor Yellow;
 
-          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
-          $u  = 'AISTV-D'
+          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe";
+          $u  = 'AISTV-D';
           if ("$env:RDP_USER") {
-              $u = "$env:RDP_USER"
+              $u = "$env:RDP_USER";
           }
 
           try {
-              Disable-LocalUser -Name "$u" -ErrorAction SilentlyContinue
-              Write-Host "│ ✅ Vô hiệu hóa user" -ForegroundColor Green
+              Disable-LocalUser -Name "$u" -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Vô hiệu hóa user" -ForegroundColor Green;
           } catch {}
 
           try {
               if (Test-Path "$ts") {
-                  & "$ts" logout 2>&1 | Out-Null
-                  & "$ts" down 2>&1 | Out-Null
+                  & "$ts" logout 2>&1 | Out-Null;
+                  & "$ts" down 2>&1 | Out-Null;
               }
-              Write-Host "│ ✅ Đóng kết nối mạng" -ForegroundColor Green
+              Write-Host "│ ✅ Đóng kết nối mạng" -ForegroundColor Green;
           } catch {}
 
           try {
-              Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue
-              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue
-              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue
-              Write-Host "│ ✅ Xóa rule firewall" -ForegroundColor Green
+              Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
+              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue;
+              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Xóa rule firewall" -ForegroundColor Green;
           } catch {}
 
           try {
-              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 1 -Force -ErrorAction SilentlyContinue
-              Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue
-              Write-Host "│ ✅ Khôi phục cài đặt RDP" -ForegroundColor Green
+              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 1 -Force -ErrorAction SilentlyContinue;
+              Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Khôi phục cài đặt RDP" -ForegroundColor Green;
           } catch {}
 
-          Write-Host "🎉 Dọn dẹp hoàn tất! Hẹn gặp lại! 👋" -ForegroundColor Green
-          exit 0
+          Write-Host "🎉 Dọn dẹp hoàn tất! Hẹn gặp lại! 👋" -ForegroundColor Green;
+          exit 0;
 
       # ───────────────────────────────────────────────
       # 13. KÍCH HOẠT PHIÊN TIẾP THEO (GỌI LẠI Ổ ĐĨA)
@@ -1688,24 +1579,13 @@ jobs:
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
         run: |
-          $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0])
-          $optStr  = "$env:OPT".ToLower()
-          $ddnsStr = "$env:DDNS".ToLower()
+          $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0]);
+          $optStr  = "$env:OPT".ToLower();
+          $ddnsStr = "$env:DDNS".ToLower();
 
-          Write-Host "Chạy lại workflow: $wf (ref: $env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" `
-              -f "duration=$env:DURATION" `
-              -f auto_restart=true `
-              -f "drive_letter=$env:MOUNT_LETTER" `
-              -f "vhd_size_gb=$env:VHD_SIZE_GB" `
-              -f "windows_image=$env:WIN_IMAGE" `
-              -f "rdp_user=$env:USER_IN" `
-              -f "fixed_password=$env:FIXED_PASS" `
-              -f "vdd_resolution=$env:VDD_RES" `
-              -f "choco_packages=$env:PKGS" `
-              -f "optimize_windows=$optStr" `
-              -f "enable_duckdns=$ddnsStr"
+          Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan;
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "rdp_user=$env:USER_IN" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
           if ($LASTEXITCODE -ne 0) {
-              throw 'Không kích hoạt được phiên mới'
+              throw 'Không kích hoạt được phiên mới';
           }
-          Write-Host "✅ Đã kích hoạt phiên tiếp theo" -ForegroundColor Green
+          Write-Host "✅ Đã kích hoạt phiên tiếp theo" -ForegroundColor Green;
