@@ -199,7 +199,7 @@ jobs:
           Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $user ($profPath)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
-      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
+      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB (ĐÃ FIX LỖI ROBOCOPY)
       # ───────────────────────────────────────────────
       - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
         shell: pwsh
@@ -229,16 +229,36 @@ jobs:
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
               '    $profDst = [System.IO.Path]::Combine("$root", "Users", "$u");',
               '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;',
+              '    # Lớp 1: Đồng bộ trực tiếp các thư mục cá nhân quan trọng (Downloads, Desktop, Documents, Pictures, Videos, Music, AppData\Roaming...)',
+              '    $priorityFolders = @("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music", "Favorites", "Links", "Saved Games", "Contacts", "Searches", "AppData\Roaming", "AppData\LocalLow");',
+              '    foreach ($pf in $priorityFolders) {',
+              '        $sDir = [System.IO.Path]::Combine("$profSrc", "$pf");',
+              '        $dDir = [System.IO.Path]::Combine("$profDst", "$pf");',
+              '        if (Test-Path "$sDir") {',
+              '            New-Item -ItemType Directory -Force -Path "$dDir" | Out-Null;',
+              '            robocopy "$sDir" "$dDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* *> $null;',
+              '        }',
+              '    }',
+              '    # Lớp 2: Đồng bộ toàn bộ thư mục gốc của User & AppData\Local (TUYỆT ĐỐI KHÔNG DÙNG KÝ TỰ * TRONG /XD)',
               '    $excludeDirs = @(',
               '        "$profSrc\AppData\Local\Temp",',
               '        "$profSrc\AppData\Local\Packages",',
               '        "$profSrc\AppData\Local\TileDataLayer",',
               '        "$profSrc\AppData\Local\ConnectedDevicesPlatform",',
-              '        "$profSrc\AppData\Local\Microsoft\Windows\UsrClass.dat*",',
               '        "$profSrc\AppData\Local\Microsoft\Windows\Explorer",',
+              '        "$profSrc\AppData\Local\Microsoft\Windows\INetCache",',
+              '        "$profSrc\AppData\Local\Microsoft\Windows\WebCache",',
+              '        "$profSrc\AppData\Local\Microsoft\Windows\Caches",',
+              '        "$profSrc\AppData\Local\D3DSCache",',
               '        "$profSrc\AppData\Local\NuGet",',
               '        "$profSrc\AppData\Local\Package Cache",',
               '        "$profSrc\AppData\Local\CrashDumps",',
+              '        "$profSrc\AppData\Local\pip",',
+              '        "$profSrc\AppData\Local\npm-cache",',
+              '        "$profSrc\AppData\Local\yarn",',
+              '        "$profSrc\AppData\Local\go-build",',
+              '        "$profSrc\AppData\Local\ms-playwright",',
+              '        "$profSrc\AppData\Local\Cypress",',
               '        "$profSrc\.dotnet",',
               '        "$profSrc\.nuget",',
               '        "$profSrc\.m2",',
@@ -249,9 +269,25 @@ jobs:
               '        "$profSrc\.ServiceHub",',
               '        "$profSrc\vcpkg"',
               '    );',
-              '    robocopy "$profSrc" "$profDst" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @excludeDirs | Out-Null;',
+              '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD @excludeDirs *> $null;',
               '    $global:LASTEXITCODE = 0;',
+              '    $dlStats = Get-ChildItem -Path "$profDst\Downloads" -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;',
+              '    $allStats = Get-ChildItem -Path "$profDst" -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;',
+              '    $dlMB = [math]::Round((($dlStats.Sum) / 1MB), 2);',
+              '    $allMB = [math]::Round((($allStats.Sum) / 1MB), 2);',
+              '    Write-Host "📊 [$Reason] Đã gom Profile [$u]: Tổng $($allStats.Count) file ($allMB MB) | Riêng Downloads: $($dlStats.Count) file ($dlMB MB)" -ForegroundColor Green;',
               '}',
+              '# Đồng bộ thêm C:\Users\Public (Downloads, Desktop, Documents)',
+              '$pubDst = [System.IO.Path]::Combine("$osDir", "Public-Profile");',
+              '@("Downloads", "Desktop", "Documents") | ForEach-Object {',
+              '    $ps = "C:\Users\Public\$_";',
+              '    $pd = "$pubDst\$_";',
+              '    if (Test-Path "$ps") {',
+              '        New-Item -ItemType Directory -Force -Path "$pd" | Out-Null;',
+              '        robocopy "$ps" "$pd" /MIR /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;',
+              '    }',
+              '};',
+              '$global:LASTEXITCODE = 0;',
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {',
               '    try {',
               '        $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json;',
@@ -264,19 +300,19 @@ jobs:
               '            ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames))',
               '        } | ForEach-Object {',
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name);',
-              '            robocopy ($_.FullName) "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
+              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;',
               '        };',
               '        Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object {',
               '            ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames))',
               '        } | ForEach-Object {',
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name);',
-              '            robocopy ($_.FullName) "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
+              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;',
               '        };',
               '        Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object {',
               '            ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames))',
               '        } | ForEach-Object {',
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name);',
-              '            robocopy ($_.FullName) "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
+              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;',
               '        };',
               '    } catch {}',
               '}',
@@ -288,7 +324,7 @@ jobs:
               '    } | ForEach-Object {',
               '        $dest = [System.IO.Path]::Combine("$extraRoot", $_.Name);',
               '        if ($_.PSIsContainer) {',
-              '            robocopy ($_.FullName) "$dest" /MIR /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
+              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;',
               '        } else {',
               '            Copy-Item -Path ($_.FullName) -Destination "$dest" -Force -ErrorAction SilentlyContinue;',
               '        }',
@@ -320,8 +356,8 @@ jobs:
               '    } else {',
               '        git checkout --orphan "$env:STATE_BRANCH" -q;',
               '    }',
-              '    robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
-              '    robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;',
+              '    robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;',
+              '    robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;',
               '    $global:LASTEXITCODE = 0;',
               '    git add -A;',
               '    git commit -m "Sync session state [$Reason]" -q 2>$null;',
@@ -435,46 +471,57 @@ jobs:
               $sourceRoot = $stateHit.Directory.Parent.FullName;
           }
 
-          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
           $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null;
 
           $extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra');
           if (Test-Path "$extraRoot") {
-              robocopy "$extraRoot" "${dl}:\" /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              robocopy "$extraRoot" "${dl}:\" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
               $global:LASTEXITCODE = 0;
           }
 
           $cOverlay = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'C-Drive-Overlay');
           if (Test-Path "$cOverlay\PF64") {
-              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              robocopy "$cOverlay\PF64" 'C:\Program Files' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
           }
           if (Test-Path "$cOverlay\PF86") {
-              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
           }
           if (Test-Path "$cOverlay\PD") {
-              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /B /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null;
+              robocopy "$cOverlay\PD" 'C:\ProgramData' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
           }
           $global:LASTEXITCODE = 0;
 
-          $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER");
-          if (-not (Test-Path "$oldProf")) {
-              $fallbackProf = Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1;
-              if ($fallbackProf) {
-                  $oldProf = $fallbackProf.FullName;
-              }
-          }
-          if (Test-Path "$oldProf") {
-              # Không chép đè thư mục Packages và UsrClass.dat để giữ nguyên Windows Settings & Start Menu của máy ảo
-              $skipRestoreDirs = @(
-                  "$oldProf\AppData\Local\Packages",
-                  "$oldProf\AppData\Local\TileDataLayer",
-                  "$oldProf\AppData\Local\ConnectedDevicesPlatform",
-                  "$oldProf\AppData\Local\Microsoft\Windows\Explorer"
-              );
-              robocopy "$oldProf" "$env:PROFILE_PATH" /E /B /XJ /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs | Out-Null;
+          # Khôi phục C:\Users\Public (Downloads, Desktop, Documents)
+          $pubSrc = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Public-Profile');
+          if (Test-Path "$pubSrc") {
+              robocopy "$pubSrc" 'C:\Users\Public' /E /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
               $global:LASTEXITCODE = 0;
-              Write-Host "✅ Đã nạp thẳng dữ liệu Profile cũ vào User gốc ($env:PROFILE_PATH)" -ForegroundColor Green;
+          }
+
+          # Quét toàn bộ các thư mục User đã lưu trong Users\* (kể cả AISTV-D cũ lẫn runneradmin) để gộp về User gốc
+          $savedUserDirs = @(Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Sort-Object { $_.Name -eq "$env:RDP_USER" });
+          if (($savedUserDirs.Count) -gt 0) {
+              foreach ($uDir in $savedUserDirs) {
+                  $srcProf = $uDir.FullName;
+                  $skipRestoreDirs = @(
+                      "$srcProf\AppData\Local\Packages",
+                      "$srcProf\AppData\Local\TileDataLayer",
+                      "$srcProf\AppData\Local\ConnectedDevicesPlatform",
+                      "$srcProf\AppData\Local\Microsoft\Windows\Explorer"
+                  );
+                  robocopy "$srcProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs *> $null;
+                  $global:LASTEXITCODE = 0;
+                  if (($uDir.Name) -ne "$env:RDP_USER") {
+                      $targetMainProf = [System.IO.Path]::Combine("$env:PROFILE_ROOT", "$env:RDP_USER");
+                      New-Item -ItemType Directory -Force -Path "$targetMainProf" | Out-Null;
+                      robocopy "$srcProf" "$targetMainProf" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
+                      Remove-Item -Path "$srcProf" -Recurse -Force -ErrorAction SilentlyContinue;
+                  }
+              }
+              $dlRestored = @(Get-ChildItem -Path "$env:PROFILE_PATH\Downloads" -Recurse -File -Force -ErrorAction SilentlyContinue).Count;
+              Write-Host "✅ Đã nạp thẳng dữ liệu Profile vào User gốc ($env:PROFILE_PATH) | Downloads có: $dlRestored file" -ForegroundColor Green;
           } else {
               Write-Host "ℹ️ Chưa có bản lưu Profile trong ổ ${dl}:\" -ForegroundColor Yellow;
           }
