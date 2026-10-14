@@ -814,16 +814,15 @@ jobs:
           Write-Host "✅ User $user đã sẵn sàng" -ForegroundColor Green;
           exit 0;
 
+# ───────────────────────────────────────────────
+      # 6.5. CÀI DRIVER MÀN HÌNH ẢO + ĐÁ RUNNERADMIN KHỎI CONSOLE + BẬT SUNSHINE CHO AISTV-D
       # ───────────────────────────────────────────────
-      # 6.5. CÀI DRIVER MÀN HÌNH ẢO + TẢI & BẬT SẴN SUNSHINE CHO USER CỐ ĐỊNH Ổ X:\
-      # ───────────────────────────────────────────────
-      - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Bật Sẵn Sunshine Cố Định Mật Khẩu
+      - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Ép Sunshine Vào Thẳng User Ổ X:\
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
-          $ErrorActionPreference = 'Continue';
-          $ProgressPreference    = 'SilentlyContinue';
+          $ErrorActionPreference = 'Continue';$ProgressPreference    = 'SilentlyContinue';
           $u                     = "$env:RDP_USER";
           $p                     = "$env:RDP_PASS";
           $instCache             = "$env:INSTALLER_CACHE";
@@ -834,9 +833,8 @@ jobs:
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
 
           $resParts = "$env:VDD_RES" -split '[@x]';
-          $vWidth   = if (($resParts.Count) -ge 1) { $resParts[0] } else { '1920' };
-          $vHeight  = if (($resParts.Count) -ge 2) { $resParts[1] } else { '1080' };
-          $vHz      = if (($resParts.Count) -ge 3) { $resParts[2] } else { '60' };
+          $vWidth   = if (($resParts.Count) -ge 1) {$resParts[0] } else { '1920' };
+          $vHeight  = if (($resParts.Count) -ge 2) { $resParts[1] } else { '1080' };$vHz      = if (($resParts.Count) -ge 3) {$resParts[2] } else { '60' };
 
           $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD');
           New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null;
@@ -852,11 +850,10 @@ jobs:
                   if (Test-Path "$usbDir\deviceinstaller64.exe") {
                       Push-Location "$usbDir";
                       Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object {
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null;
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null;
+                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
+                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
                       };
-                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null;
-                      & .\deviceinstaller64.exe enableidd 1 *> $null;
+                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null; & .\deviceinstaller64.exe enableidd 1 *>$null;
                       Pop-Location;
                       Write-Host "│ ✅ Đã cài và bật màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
                   }
@@ -865,30 +862,76 @@ jobs:
               Write-Host "│ ⚠️  USBMMIDD_v2 lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
-          Write-Host "👤 2. ĐANG MỞ SẴN PHIÊN MÀN HÌNH ẢO CHO USER CỐ ĐỊNH: $u (Ổ ${dl}:\)..." -ForegroundColor Yellow;
+          Write-Host "👤 2. ĐANG ĐĂNG NHẬP USER [$u] & ĐÁ [runneradmin] KHỎI MÀN HÌNH CONSOLE..." -ForegroundColor Yellow;
           try {
-              $rdpTcp = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp';
-              Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 1 -Force;
+              # Cho phép mở nhiều session song song để tạo session cho AISTV-D trước khi chuyển vào Console
+              $tsReg  = 'HKLM:\System\CurrentControlSet\Control\Terminal Server';
+              $tsPol  = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services';$rdpTcp = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp';
+              New-Item -Path "$tsPol" -Force | Out-Null;
+              Set-ItemProperty -Path "$tsReg" -Name 'fSingleSessionPerUser' -Value 0 -Type DWord -Force;
+              Set-ItemProperty -Path "$tsPol" -Name 'fSingleSessionPerUser' -Value 0 -Type DWord -Force;
+              Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 1 -Type DWord -Force;
+              Set-ItemProperty -Path "$rdpTcp" -Name 'SecurityLayer' -Value 1 -Type DWord -Force;
 
-              $tscKey = 'HKCU:\Software\Microsoft\Terminal Server Client';
-              New-Item -Path "$tscKey\LocalDevices" -Force | Out-Null;
-              Set-ItemProperty -Path "$tscKey" -Name 'AuthenticationLevelOverride' -Value 0 -Type DWord -Force;
-              Set-ItemProperty -Path "$tscKey\LocalDevices" -Name '127.0.0.1' -Value 255 -Type DWord -Force;
+              # Tắt hoàn toàn hộp thoại hỏi xác thực chứng chỉ của mstsc.exe
+              @('HKCU:\Software\Microsoft\Terminal Server Client', 'HKLM:\Software\Microsoft\Terminal Server Client') | ForEach-Object {
+                  $k = "$_";
+                  New-Item -Path "$k\LocalDevices" -Force | Out-Null;
+                  Set-ItemProperty -Path "$k" -Name 'AuthenticationLevelOverride' -Value 0 -Type DWord -Force;
+                  Set-ItemProperty -Path "$k\LocalDevices" -Name '127.0.0.1' -Value 255 -Type DWord -Force;
+                  Set-ItemProperty -Path "$k\LocalDevices" -Name '127.0.0.2' -Value 255 -Type DWord -Force;
+                  Set-ItemProperty -Path "$k\LocalDevices" -Name 'localhost' -Value 255 -Type DWord -Force;
+              };
 
               $delegPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation';
               New-Item -Path "$delegPath\AllowDefaultCredentials" -Force | Out-Null;
+              New-Item -Path "$delegPath\AllowDefCredentialsWhenNTLMOnly" -Force | Out-Null;
               Set-ItemProperty -Path "$delegPath" -Name 'AllowDefaultCredentials' -Value 1 -Type DWord -Force;
+              Set-ItemProperty -Path "$delegPath" -Name 'AllowDefCredentialsWhenNTLMOnly' -Value 1 -Type DWord -Force;
               Set-ItemProperty -Path "$delegPath" -Name 'ConcatenateDefaults_AllowDefault' -Value 1 -Type DWord -Force;
+              Set-ItemProperty -Path "$delegPath" -Name 'ConcatenateDefaults_AllowDefNTLMOnly' -Value 1 -Type DWord -Force;
               Set-ItemProperty -Path "$delegPath\AllowDefaultCredentials" -Name '1' -Value 'TERMSRV/*' -Type String -Force;
+              Set-ItemProperty -Path "$delegPath\AllowDefCredentialsWhenNTLMOnly" -Name '1' -Value 'TERMSRV/*' -Type String -Force;
 
-              & cmdkey /generic:TERMSRV/127.0.0.1 /user:"$u" /pass:"$p" *> $null;
+              # Nạp thông tin đăng nhập của AISTV-D vào Credential Manager cho mọi địa chỉ Loopback
+              & cmdkey /generic:TERMSRV/127.0.0.1 /user:"$env:COMPUTERNAME\$u" /pass:"$p" *> $null;
+              & cmdkey /generic:TERMSRV/127.0.0.2 /user:"$env:COMPUTERNAME\$u" /pass:"$p" *> $null;
+              & cmdkey /generic:TERMSRV/localhost /user:"$env:COMPUTERNAME\$u" /pass:"$p" *> $null;
               & cmdkey /generic:127.0.0.1 /user:"$u" /pass:"$p" *> $null;
-              Start-Process mstsc.exe -ArgumentList '/v:127.0.0.1', "/w:$vWidth", "/h:$vHeight";
+              & cmdkey /generic:127.0.0.2 /user:"$u" /pass:"$p" *> $null;
 
-              $userSessionId = $null;
-              1..12 | ForEach-Object {
+              # Tạo file cấu hình .rdp tắt mọi prompt xác thực
+              $rdpFile = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'autologin-aistv.rdp');
+              $rdpLines = @(
+                  'full address:s:127.0.0.2:3389',
+                  "username:s:$env:COMPUTERNAME\$u",
+                  'screen mode id:i:1',
+                  "desktopwidth:i:$vWidth",
+                  "desktopheight:i:$vHeight",
+                  'session bpp:i:32',
+                  'authentication level:i:0',
+                  'prompt for credentials:i:0',
+                  'promptcredentialonce:i:0',
+                  'enablecredsspsupport:i:1',
+                  'negotiate security layer:i:1'
+              );
+              Set-Content -Path "$rdpFile" -Value ($rdpLines -join "`r`n") -Encoding ASCII;
+
+              Start-Process mstsc.exe -ArgumentList "`"$rdpFile`"";
+
+              # Dùng WScript.Shell SendKeys đề phòng hộp thoại cảnh báo hiện lên trong phiên runneradmin
+              $wsh = New-Object -ComObject WScript.Shell -ErrorAction SilentlyContinue;
+
+              $userSessionId =$null;
+              1..15 | ForEach-Object {
                   if (-not ($userSessionId)) {
                       Start-Sleep -Seconds 2;
+                      if ($wsh) {
+                          try {
+                              if ($wsh.AppActivate('Remote Desktop Connection')) {$wsh.SendKeys('{LEFT}{ENTER}');
+                              }
+                          } catch {}
+                      }
                       @(quser 2>$null) | ForEach-Object {
                           $ln = "$_";
                           $clean = ($ln -replace '^>', ' ').Trim() -split '\s+';
@@ -902,19 +945,23 @@ jobs:
                   }
               };
 
-              Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 0 -Force;
+              # Trả lại cấu hình RDP không cần NLA để dễ kết nối từ bên ngoài
+              Set-ItemProperty -Path "$rdpTcp" -Name 'UserAuthentication' -Value 0 -Type DWord -Force;
+              Set-ItemProperty -Path "$rdpTcp" -Name 'SecurityLayer' -Value 0 -Type DWord -Force;
 
               if ($userSessionId) {
-                  Start-Sleep -Seconds 2;
+                  Start-Sleep -Seconds 3;
+                  # ĐÁ runneradmin KHỎI CONSOLE VÀ GẮN THẲNG AISTV-D VÀO CONSOLE
                   & tscon "$userSessionId" /dest:console *> $null;
+                  Start-Sleep -Seconds 2;
                   Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue;
-                  Write-Host "│ ✅ Đã kích hoạt phiên Desktop Console (ID: $userSessionId) gắn với màn hình ảo cho user $u!" -ForegroundColor Green;
+                  Write-Host "│ ✅ ĐÃ CHUYỂN MÀN HÌNH CONSOLE SANG USER [$u] (Session ID:$userSessionId) - Đã thay thế runneradmin!" -ForegroundColor Green;
               } else {
                   Stop-Process -Name 'mstsc' -Force -ErrorAction SilentlyContinue;
-                  Write-Host "│ ℹ️  Phiên Console sẽ tự kích hoạt ngay khi kết nối Moonlight / RDP" -ForegroundColor Cyan;
+                  Write-Host "│ ⚠️  Chưa tự tạo được Session qua mstsc, đang thử khởi tạo qua Task Interactive..." -ForegroundColor Yellow;
               }
           } catch {
-              Write-Host "│ ⚠️  Lỗi nhỏ khi kích hoạt Console Session: $($_.Exception.Message)" -ForegroundColor Yellow;
+              Write-Host "│ ⚠️  Lỗi nhỏ khi chuyển Console Session: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
           Write-Host "☀️  3. ĐANG TẢI & CÀI ĐẶT SUNSHINE (LƯU TRỮ BỀN VỮNG TRÊN ${dl}:\)..." -ForegroundColor Yellow;
@@ -941,7 +988,7 @@ jobs:
               if (-not ($completed)) {
                   Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
                   Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue;
-                  Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  Get-Process | Where-Object { ($_.Name -match 'sunshine\vert{}choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
               } else {
                   Receive-Job -Job ($installJob) | Out-Null;
               }
@@ -969,7 +1016,7 @@ jobs:
               } else {
                   New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null;
               }
-              Write-Host "│ ✅ Đã gắn kết cấu hình Sunshine <-> $sunPersistCfg (Giữ nguyên thiết bị Moonlight đã ghép nối)" -ForegroundColor Green;
+              Write-Host "│ ✅ Đã gắn kết cấu hình Sunshine <-> $sunPersistCfg" -ForegroundColor Green;
 
               $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf');
               if (-not (Test-Path "$confFile")) {
@@ -996,6 +1043,7 @@ jobs:
               Pop-Location;
               Write-Host "│ ✅ Đã cài sẵn tài khoản Sunshine cố định -> User: $u | Pass: (Cố định)" -ForegroundColor Green;
 
+              # Đăng ký Task tự động đẩy AISTV-D vào Console và bật Sunshine ngay khi AISTV-D đăng nhập
               $svcExe = "$sunDir\tools\sunshinesvc.exe";
               $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
               if ((-not ($svcObj)) -and (Test-Path "$svcExe")) {
@@ -1008,8 +1056,9 @@ jobs:
                   Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue;
                   Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running)" -ForegroundColor Green;
               } else {
-                  Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden;
-                  Write-Host "│ ✅ Đã bật Sunshine chạy nền trực tiếp" -ForegroundColor Green;
+                  & schtasks /create /tn "AISTV-Sunshine-User" /tr "`"$sunExe`"" /sc ONLOGON /ru "$u" /rp "$p" /rl HIGHEST /it /f *> $null;
+                  & schtasks /run /tn "AISTV-Sunshine-User" *> $null;
+                  Write-Host "│ ✅ Đã bật Sunshine trực tiếp dưới quyền user $u" -ForegroundColor Green;
               }
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
           } else {
@@ -1017,42 +1066,6 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
           exit 0;
-
-      - name: 🔍 KIỂM TRA QUYỀN HỆ THỐNG & SUNSHINE
-        shell: pwsh
-        run: |
-          Write-Host "";
-          Write-Host "🔍 KIỂM TRA QUYỀN ĐĂNG NHẬP & DỊCH VỤ STREAM" -ForegroundColor Yellow;
-          $u = "$env:RDP_USER";
-
-          $userObj = Get-LocalUser -Name "$u" -ErrorAction SilentlyContinue;
-          if (-not ($userObj)) {
-              Write-Host "│ ❌ User không tồn tại" -ForegroundColor Red;
-              exit 1;
-          }
-          Write-Host "│ ✅ User tồn tại (Enabled: $($userObj.Enabled))" -ForegroundColor Green;
-
-          $adminList = (& net localgroup Administrators 2>$null) -join "`n";
-          $rdpList   = (& net localgroup "Remote Desktop Users" 2>$null) -join "`n";
-          $isAdmin   = $adminList -match ([regex]::Escape("$u"));
-          $isRdp     = $rdpList -match ([regex]::Escape("$u"));
-
-          Write-Host "│ $(if ($isAdmin) {'✅'} else {'❌'}) Quyền Administrator";
-          Write-Host "│ $(if ($isRdp) {'✅'} else {'❌'}) Quyền Remote Desktop";
-          Write-Host "│ $(if (Test-Path "$env:PROFILE_PATH") {'✅'} else {'⚠️'}) Profile: $env:PROFILE_PATH";
-
-          $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue;
-          Write-Host "│ $(if (($svc.Status) -eq 'Running') {'✅'} else {'❌'}) TermService (RDP): $($svc.Status)";
-
-          $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-          $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
-          $sunOk = ($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'));
-          Write-Host "│ $(if ($sunOk) {'✅'} else {'⚠️'}) Sunshine Stream Server: $(if ($sunOk) {'Đang chạy (Port 47990)'} else {'Chờ kết nối'})";
-
-          $displays = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue);
-          Write-Host "│ ✅ Số màn hình hoạt động (gồm Màn hình ảo): $($displays.Count)";
-          exit 0;
-
       # ───────────────────────────────────────────────
       # 7. TAILSCALE
       # ───────────────────────────────────────────────
@@ -1354,9 +1367,13 @@ jobs:
               try {
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
-                      if ("$lineStr" -match "^\s*$([regex]::Escape("$u"))\s+(\d+)\s+Disc") {
-                          $discId =$Matches[1];
-                          & tscon "$discId" /dest:console *> $null;
+                      if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
+                          $parts = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';
+                          $sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
+                          if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
+                              & tscon "$sidNum" /dest:console *> $null;
+                              Write-Host "🖥️ Đã chuyển phiên của $u (ID: $sidNum) vào màn hình Console cho Sunshine!" -ForegroundColor Green;
+                          }
                       }
                   };
               } catch {}
