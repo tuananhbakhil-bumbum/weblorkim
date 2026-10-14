@@ -466,7 +466,6 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
 
-          # Khôi phục thẳng dữ liệu Profile vào User gốc ($env:PROFILE_PATH)
           $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER");
           if (-not (Test-Path "$oldProf")) {
               $fallbackProf = Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1;
@@ -669,159 +668,15 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 6. CẤU HÌNH TRỰC TIẾP USER GỐC (ĐỔI TÊN / MẬT KHẨU / LIÊN KẾT)
+      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD) & BỘ CÀI SUNSHINE
       # ───────────────────────────────────────────────
-      - name: 👤 Cấu hình trực tiếp User gốc (Đổi tên & Gắn liên kết)
-        shell: pwsh
-        env:
-          RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
-          FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
-        run: |
-          $origUser = "$env:ORIG_USER";
-          $user     = "$env:RDP_USER";
-          $profPath = "$env:PROFILE_PATH";
-
-          Write-Host "";
-          Write-Host "👤 ĐANG CẤU HÌNH TRỰC TIẾP USER GỐC: $origUser -> $user" -ForegroundColor Yellow;
-
-          if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) {
-              $matKhau = ("$env:RDP_PASSWORD_SECRET").Trim();
-              $source  = 'secret';
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ secret RDP_PASSWORD" -ForegroundColor Blue;
-          } elseif (-not ([string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT"))) {
-              $matKhau = ("$env:FIXED_PASS_INPUT").Trim();
-              $source  = 'fixed_input';
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ input" -ForegroundColor Blue;
-          } elseif ("$env:RESTORE_PASS") {
-              $matKhau = "$env:RESTORE_PASS";
-              $source  = 'restored';
-              Write-Host "│ ℹ️  Dùng mật khẩu đã lưu từ phiên trước" -ForegroundColor Blue;
-          } else {
-              $matKhau = 'Aistv@2026';
-              $source  = 'default_fixed';
-              Write-Host "│ ℹ️  Dùng mật khẩu cố định mặc định: $matKhau" -ForegroundColor Blue;
-          }
-
-          # Nới lỏng chính sách mật khẩu để đặt mọi mật khẩu tùy ý
-          try {
-              & net accounts /maxpwage:unlimited *> $null;
-              $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg');
-              $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb');
-              & secedit /export /cfg "$secCfg" *> $null;
-              if (Test-Path "$secCfg") {
-                  $rawSec = Get-Content -Raw -Path "$secCfg";
-                  $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0';
-                  $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0';
-                  Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode;
-                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null;
-                  Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue;
-              }
-          } catch {}
-
-          # Nếu tên mong muốn khác tên gốc (runneradmin), đổi tên trực tiếp User gốc
-          if ("$user" -ne "$origUser") {
-              try {
-                  if ((Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue) -and (-not (Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue))) {
-                      Rename-LocalUser -Name "$origUser" -NewName "$user" -ErrorAction Stop;
-                      Write-Host "│ ✅ Đã đổi tên User gốc [$origUser] -> [$user]" -ForegroundColor Green;
-                  }
-              } catch {
-                  & wmic useraccount where "Name='$origUser'" rename "$user" *> $null;
-                  Write-Host "│ ✅ Đã đổi tên User gốc qua WMIC [$origUser] -> [$user]" -ForegroundColor Green;
-              }
-
-              # Tạo Junction C:\Users\<Tên_Mới> trỏ thẳng về Profile gốc để tương thích mọi đường dẫn
-              $aliasProfile = "C:\Users\$user";
-              if ((-not (Test-Path "$aliasProfile")) -and (Test-Path "$profPath")) {
-                  New-Item -ItemType Junction -Path "$aliasProfile" -Target "$profPath" -Force | Out-Null;
-                  Write-Host "│ ✅ Đã liên kết $aliasProfile <-> $profPath" -ForegroundColor Green;
-              }
-          }
-
-          $activeUserObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
-          if (-not ($activeUserObj)) {
-              $activeUserObj = Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue;
-              $user = $activeUserObj.Name;
-              "RDP_USER=$user" >> "$env:GITHUB_ENV";
-          }
-
-          $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
-          try {
-              Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop;
-          } catch {
-              & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
-          }
-
-          & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
-          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null;
-          Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue;
-          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
-          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
-
-          $userSid = $activeUserObj.SID.Value;
-          & icacls "$profPath" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-          $global:LASTEXITCODE = 0;
-
-          "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV";
-          "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
-
-          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
-          Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force;
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force;
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force;
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force;
-
-          try {
-              $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop');
-              New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null;
-              $ws = New-Object -ComObject WScript.Shell;
-
-              @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object {
-                  $d = "$_";
-                  $lnk1 = $ws.CreateShortcut("$d\O-DIA-RIENG-AISTV.lnk");
-                  $lnk1.TargetPath = "$($env:MOUNT_LETTER):\";
-                  $lnk1.Save();
-
-                  $lnk2 = $ws.CreateShortcut("$d\AISTV-SHARED.lnk");
-                  $lnk2.TargetPath = "$env:SHARED_DATA_DIR";
-                  $lnk2.Save();
-
-                  $lnk3 = $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url");
-                  $lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/";
-                  $lnk3.Save();
-
-                  $lnk4 = $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url");
-                  $lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/";
-                  $lnk4.Save();
-
-                  $tsconBat = "$d\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat";
-                  $batLines = @(
-                      '@echo off',
-                      'for /f "tokens=3-4" %%a in (''query session %USERNAME%'') do @if "%%b"=="Active" tscon %%a /dest:console'
-                  );
-                  Set-Content -Path "$tsconBat" -Value ($batLines -join "`r`n") -Encoding ASCII;
-              };
-              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng & Sunshine trên Desktop User gốc" -ForegroundColor Green;
-          } catch {
-              Write-Host "│ ⚠️  Không tạo được shortcut" -ForegroundColor Yellow;
-          }
-
-          'SESSION_READY=1' >> "$env:GITHUB_ENV";
-          Write-Host "✅ User gốc [$user] ($profPath) đã sẵn sàng trên Console!" -ForegroundColor Green;
-          exit 0;
-
-      # ───────────────────────────────────────────────
-      # 6.5. CÀI DRIVER MÀN HÌNH ẢO (VDD) & BẬT SUNSHINE TRÊN USER GỐC
-      # ───────────────────────────────────────────────
-      - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Bật Sunshine Trên User Gốc
+      - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Sunshine
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
           $ErrorActionPreference = 'Continue';
           $ProgressPreference    = 'SilentlyContinue';
-          $u                     = "$env:RDP_USER";
-          $p                     = "$env:RDP_PASS";
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
@@ -861,7 +716,7 @@ jobs:
               Write-Host "│ ⚠️  USBMMIDD_v2 lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
-          Write-Host "☀️  2. ĐANG TẢI & CẤU HÌNH SUNSHINE TRỰC TIẾP CHO USER GỐC [$u]..." -ForegroundColor Yellow;
+          Write-Host "☀️  2. ĐANG TẢI & CÀI ĐẶT SUNSHINE..." -ForegroundColor Yellow;
 
           $sunDir = 'C:\Program Files\Sunshine';
           $sunExe = "$sunDir\sunshine.exe";
@@ -931,32 +786,6 @@ jobs:
                       Add-Content -Path "$confFile" -Value "`r`norigin_web_ui_allowed = wan" -Encoding UTF8;
                   }
               }
-
-              $userSid = (Get-LocalUser -Name "$u").SID.Value;
-              & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-              & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-
-              Push-Location "$sunDir";
-              & "$sunExe" --creds "$u" "$p" *> $null;
-              Pop-Location;
-              Write-Host "│ ✅ Đã đồng bộ tài khoản Sunshine Web UI -> User: $u | Pass: (Cố định)" -ForegroundColor Green;
-
-              $svcExe = "$sunDir\tools\sunshinesvc.exe";
-              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-              if ((-not ($svcObj)) -and (Test-Path "$svcExe")) {
-                  & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null;
-                  $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue;
-              }
-
-              if ($svcObj) {
-                  Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
-                  Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue;
-                  Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running trên Console User gốc)" -ForegroundColor Green;
-              } else {
-                  Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden;
-                  Write-Host "│ ✅ Đã chạy trực tiếp Sunshine trong phiên Console của $u" -ForegroundColor Green;
-              }
-              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
           } else {
               Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red;
           }
@@ -964,7 +793,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 7. TAILSCALE
+      # 7. TAILSCALE (CÀI ĐẶT 3 LỚP TRƯỚC KHI ĐỔI TÊN USER)
       # ───────────────────────────────────────────────
       - name: 🌐 THIẾT LẬP MẠNG PREMIUM
         env:
@@ -979,21 +808,70 @@ jobs:
               exit 1;
           }
 
-          $msiPath = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi');
           $ProgressPreference = 'SilentlyContinue';
-          if (-not (Test-Path "$msiPath")) {
-              Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiPath";
+          $ts = 'C:\Program Files\Tailscale\tailscale.exe';
+
+          if (-not (Test-Path "$ts")) {
+              # Dọn dẹp khóa Uninstall rác (nếu có từ bản lưu Registry cũ) và nhả tiến trình msiexec bị kẹt
+              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
+              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
+              Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
+
+              # Lớp 1: Tải MSI và copy sang ổ C:\ ($env:RUNNER_TEMP) để dịch vụ msiserver đọc trực tiếp
+              $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi');
+              if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) {
+                  Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue;
+              }
+              if (-not (Test-Path "$msiCache")) {
+                  try {
+                      Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing;
+                  } catch {}
+              }
+              if (Test-Path "$msiCache") {
+                  $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi');
+                  Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force;
+                  Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait;
+              }
+
+              # Lớp 2: Nếu msiexec vẫn bị chặn, cài bằng bộ cài .exe trực tiếp (không qua msiexec)
+              if (-not (Test-Path "$ts")) {
+                  Write-Host "│ ⚠️  MSI chưa bung được file, chuyển sang bộ cài EXE trực tiếp..." -ForegroundColor Yellow;
+                  $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe');
+                  try {
+                      Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing;
+                      if (Test-Path "$exePath") {
+                          Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait;
+                      }
+                  } catch {}
+              }
+
+              # Lớp 3: Dự phòng cuối qua Chocolatey
+              if (-not (Test-Path "$ts")) {
+                  Write-Host "│ ⚠️  Đang cài Tailscale dự phòng qua Chocolatey..." -ForegroundColor Yellow;
+                  choco install tailscale -y --no-progress --limit-output --ignore-checksums;
+                  $global:LASTEXITCODE = 0;
+              }
           }
-          Start-Process msiexec.exe -ArgumentList '/i', "`"$msiPath`"", '/quiet', '/norestart' -Wait;
-          Write-Host "│ ✅ Đã cài Tailscale" -ForegroundColor Green;
 
-          Start-Sleep -Seconds 10;
-          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe";
-
-          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=ai-stv-premium-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset;
-          if (($LASTEXITCODE) -ne 0) {
-              Write-Host "❌ Lỗi kết nối Tailscale" -ForegroundColor Red;
+          if (-not (Test-Path "$ts")) {
+              Write-Host "❌ Không tìm thấy tailscale.exe sau cả 3 phương thức cài đặt!" -ForegroundColor Red;
               exit 1;
+          }
+          Write-Host "│ ✅ Đã cài Tailscale ($ts)" -ForegroundColor Green;
+
+          Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue;
+          Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue;
+          Start-Sleep -Seconds 6;
+
+          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=ai-stv-premium-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset --unattended;
+          if (($LASTEXITCODE) -ne 0) {
+              Start-Sleep -Seconds 5;
+              & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=ai-stv-premium-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset;
+              if (($LASTEXITCODE) -ne 0) {
+                  Write-Host "❌ Lỗi kết nối Tailscale" -ForegroundColor Red;
+                  exit 1;
+              }
           }
           Write-Host "│ ✅ Kết nối Tailscale thành công" -ForegroundColor Green;
 
@@ -1019,7 +897,175 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 8. DUCKDNS
+      # 8. CẤU HÌNH TRỰC TIẾP USER GỐC & KHỞI ĐỘNG SUNSHINE
+      # ───────────────────────────────────────────────
+      - name: 👤 Cấu hình trực tiếp User gốc (Đổi tên, Mật khẩu & Bật Sunshine)
+        shell: pwsh
+        env:
+          RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
+          FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
+        run: |
+          $origUser = "$env:ORIG_USER";
+          $user     = "$env:RDP_USER";
+          $profPath = "$env:PROFILE_PATH";
+
+          Write-Host "";
+          Write-Host "👤 ĐANG CẤU HÌNH TRỰC TIẾP USER GỐC: $origUser -> $user" -ForegroundColor Yellow;
+
+          if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) {
+              $matKhau = ("$env:RDP_PASSWORD_SECRET").Trim();
+              $source  = 'secret';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ secret RDP_PASSWORD" -ForegroundColor Blue;
+          } elseif (-not ([string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT"))) {
+              $matKhau = ("$env:FIXED_PASS_INPUT").Trim();
+              $source  = 'fixed_input';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định từ input" -ForegroundColor Blue;
+          } elseif ("$env:RESTORE_PASS") {
+              $matKhau = "$env:RESTORE_PASS";
+              $source  = 'restored';
+              Write-Host "│ ℹ️  Dùng mật khẩu đã lưu từ phiên trước" -ForegroundColor Blue;
+          } else {
+              $matKhau = 'Aistv@2026';
+              $source  = 'default_fixed';
+              Write-Host "│ ℹ️  Dùng mật khẩu cố định mặc định: $matKhau" -ForegroundColor Blue;
+          }
+
+          try {
+              & net accounts /maxpwage:unlimited *> $null;
+              $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg');
+              $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb');
+              & secedit /export /cfg "$secCfg" *> $null;
+              if (Test-Path "$secCfg") {
+                  $rawSec = Get-Content -Raw -Path "$secCfg";
+                  $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0';
+                  $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0';
+                  Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode;
+                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null;
+                  Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue;
+              }
+          } catch {}
+
+          if ("$user" -ne "$origUser") {
+              try {
+                  if ((Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue) -and (-not (Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue))) {
+                      Rename-LocalUser -Name "$origUser" -NewName "$user" -ErrorAction Stop;
+                      Write-Host "│ ✅ Đã đổi tên User gốc [$origUser] -> [$user]" -ForegroundColor Green;
+                  }
+              } catch {
+                  & wmic useraccount where "Name='$origUser'" rename "$user" *> $null;
+                  Write-Host "│ ✅ Đã đổi tên User gốc qua WMIC [$origUser] -> [$user]" -ForegroundColor Green;
+              }
+
+              $aliasProfile = "C:\Users\$user";
+              if ((-not (Test-Path "$aliasProfile")) -and (Test-Path "$profPath")) {
+                  New-Item -ItemType Junction -Path "$aliasProfile" -Target "$profPath" -Force | Out-Null;
+                  Write-Host "│ ✅ Đã liên kết $aliasProfile <-> $profPath" -ForegroundColor Green;
+              }
+          }
+
+          $activeUserObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
+          if (-not ($activeUserObj)) {
+              $activeUserObj = Get-LocalUser -Name "$origUser" -ErrorAction SilentlyContinue;
+              $user = $activeUserObj.Name;
+              "RDP_USER=$user" >> "$env:GITHUB_ENV";
+          }
+
+          $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
+          try {
+              Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop;
+          } catch {
+              & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
+          }
+
+          & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
+          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null;
+          Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue;
+          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
+          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
+
+          $userSid = $activeUserObj.SID.Value;
+          & icacls "$profPath" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
+          $global:LASTEXITCODE = 0;
+
+          "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV";
+          "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
+
+          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
+          Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force;
+          Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force;
+
+          # Đồng bộ tài khoản Sunshine & bật dịch vụ Sunshine trên User gốc
+          $sunDir = 'C:\Program Files\Sunshine';
+          $sunExe = "$sunDir\sunshine.exe";
+          $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG";
+          if (Test-Path "$sunExe") {
+              & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
+              & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
+
+              Push-Location "$sunDir";
+              & "$sunExe" --creds "$user" "$matKhau" *> $null;
+              Pop-Location;
+              Write-Host "│ ✅ Đã đồng bộ tài khoản Sunshine Web UI -> User: $user | Pass: (Cố định)" -ForegroundColor Green;
+
+              $svcExe = "$sunDir\tools\sunshinesvc.exe";
+              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
+              if ((-not ($svcObj)) -and (Test-Path "$svcExe")) {
+                  & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null;
+                  $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue;
+              }
+
+              if ($svcObj) {
+                  Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
+                  Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue;
+                  Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running trên Console User gốc)" -ForegroundColor Green;
+              } else {
+                  Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden;
+                  Write-Host "│ ✅ Đã chạy trực tiếp Sunshine trong phiên Console của $user" -ForegroundColor Green;
+              }
+              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
+          }
+
+          try {
+              $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop');
+              New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null;
+              $ws = New-Object -ComObject WScript.Shell;
+
+              @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object {
+                  $d = "$_";
+                  $lnk1 = $ws.CreateShortcut("$d\O-DIA-RIENG-AISTV.lnk");
+                  $lnk1.TargetPath = "$($env:MOUNT_LETTER):\";
+                  $lnk1.Save();
+
+                  $lnk2 = $ws.CreateShortcut("$d\AISTV-SHARED.lnk");
+                  $lnk2.TargetPath = "$env:SHARED_DATA_DIR";
+                  $lnk2.Save();
+
+                  $lnk3 = $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url");
+                  $lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/";
+                  $lnk3.Save();
+
+                  $lnk4 = $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url");
+                  $lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/";
+                  $lnk4.Save();
+
+                  $tsconBat = "$d\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat";
+                  $batLines = @(
+                      '@echo off',
+                      'for /f "tokens=3-4" %%a in (''query session %USERNAME%'') do @if "%%b"=="Active" tscon %%a /dest:console'
+                  );
+                  Set-Content -Path "$tsconBat" -Value ($batLines -join "`r`n") -Encoding ASCII;
+              };
+              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng & Sunshine trên Desktop User gốc" -ForegroundColor Green;
+          } catch {}
+
+          'SESSION_READY=1' >> "$env:GITHUB_ENV";
+          Write-Host "✅ User gốc [$user] ($profPath) đã sẵn sàng trên Console!" -ForegroundColor Green;
+          exit 0;
+
+      # ───────────────────────────────────────────────
+      # 9. DUCKDNS
       # ───────────────────────────────────────────────
       - name: 🦆 CẬP NHẬT DUCKDNS
         if: ${{ inputs.enable_duckdns }}
@@ -1069,7 +1115,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 9. KHỞI CHẠY WEB PANEL QUẢN LÝ & HIỂN THỊ KẾT NỐI
+      # 10. KHỞI CHẠY WEB PANEL QUẢN LÝ & HIỂN THỊ KẾT NỐI
       # ───────────────────────────────────────────────
       - name: 🌐 Khởi chạy Web Quản Lý RDP & Sunshine (Port 8080) & Ghi State
         shell: pwsh
@@ -1081,7 +1127,12 @@ jobs:
               $savePass = "$env:RDP_PASS";
           }
 
-          $userSid = (Get-LocalUser -Name "$env:RDP_USER").SID.Value;
+          $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue;
+          if (-not ($uObj)) {
+              $uObj = Get-LocalUser -Name "$env:ORIG_USER" -ErrorAction SilentlyContinue;
+          }
+          $userSid = $uObj.SID.Value;
+
           $state = [ordered]@{
               user            = "$env:RDP_USER";
               sid             = "$userSid";
@@ -1217,7 +1268,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 10. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
+      # 11. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
       # ───────────────────────────────────────────────
       - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE)
         id: keepalive
@@ -1262,7 +1313,6 @@ jobs:
                   }
               }
 
-              # Tự động trả phiên của User gốc về Console ngay khi ngắt RDP để Sunshine không mất màn hình
               try {
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
@@ -1319,7 +1369,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 11. LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
+      # 12. LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
       # ───────────────────────────────────────────────
       - name: 💾 Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
         if: always()
@@ -1339,7 +1389,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 12. DỌN DẸP HỆ THỐNG
+      # 13. DỌN DẸP HỆ THỐNG
       # ───────────────────────────────────────────────
       - name: 🧹 DỌN DẸP HỆ THỐNG
         if: always()
@@ -1375,7 +1425,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 13. KÍCH HOẠT PHIÊN TIẾP THEO (GỌI LẠI Ổ ĐĨA)
+      # 14. KÍCH HOẠT PHIÊN TIẾP THEO (GỌI LẠI Ổ ĐĨA)
       # ───────────────────────────────────────────────
       - name: 🔁 Kích hoạt phiên tiếp theo & Mở lại ổ đĩa
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart || env.FORCE_NEXT_SESSION == '1') }}
