@@ -237,10 +237,9 @@ jobs:
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null;',
-              '# Sao lưu các gói Driver bên thứ 3 (VB-Audio, VDD...)',
+              '# Đảm bảo xóa bỏ thư mục Drivers-Backup cũ (tránh kẹt pnputil khi khôi phục)',
               '$drvBk = [System.IO.Path]::Combine("$osDir", "Drivers-Backup");',
-              'New-Item -ItemType Directory -Force -Path "$drvBk" | Out-Null;',
-              'pnputil /export-driver * "$drvBk" *> $null;',
+              'if (Test-Path "$drvBk") { Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue; }',
               '$u = "$env:RDP_USER";',
               '$profSrc = "$env:PROFILE_PATH";',
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
@@ -474,6 +473,12 @@ jobs:
           $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null;
 
+          # Xóa thư mục Drivers-Backup từ bản lưu cũ để không làm nặng ổ và không treo pnputil
+          $drvBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Drivers-Backup');
+          if (Test-Path "$drvBk") {
+              Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue;
+          }
+
           $extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra');
           if (Test-Path "$extraRoot") {
               robocopy "$extraRoot" "${dl}:\" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
@@ -521,13 +526,6 @@ jobs:
               };
               & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True;
               Write-Host "✅ Đã nạp lại Registry hệ thống, Hình nền, Tỷ lệ Scale & Cài đặt Windows" -ForegroundColor Green;
-          }
-
-          $drvBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Drivers-Backup');
-          if (Test-Path "$drvBk") {
-              pnputil /add-driver "$drvBk\*.inf" /subdirs /install *> $null;
-              $global:LASTEXITCODE = 0;
-              Write-Host "✅ Đã nạp lại các gói Driver đã lưu vào DriverStore" -ForegroundColor Green;
           }
 
           if (Test-Path "$env:SHARED_STATE_FILE") {
@@ -1489,7 +1487,7 @@ jobs:
           Write-Host "";
 
           $lastLog = (Get-Date).AddHours(-1);
-          $warned  = $false;
+          $warned  =$false;
 
           while ($true) {
               if (Test-Path "$sigFile") {
@@ -1515,7 +1513,7 @@ jobs:
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
                       if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
-                          $parts = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
+                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
                               & tscon "$sidNum" /dest:console *> $null;
                               Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine!" -ForegroundColor Green;
