@@ -245,47 +245,36 @@ jobs:
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
               '    $profDst = [System.IO.Path]::Combine("$root", "Users", "$u");',
               '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;',
-              '    $priorityFolders = @("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music", "Favorites", "Links", "Saved Games", "Contacts", "Searches", "AppData\Roaming", "AppData\LocalLow");',
-              '    foreach ($pf in $priorityFolders) {',
-              '        $sDir = [System.IO.Path]::Combine("$profSrc", "$pf");',
-              '        $dDir = [System.IO.Path]::Combine("$profDst", "$pf");',
-              '        if (Test-Path "$sDir") {',
-              '            New-Item -ItemType Directory -Force -Path "$dDir" | Out-Null;',
-              '            robocopy "$sDir" "$dDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* *> $null;',
-              '        }',
-              '    }',
-              '    $excludeDirs = @(',
-              '        "$profSrc\AppData\Local\Temp",',
-              '        "$profSrc\AppData\Local\Packages",',
-              '        "$profSrc\AppData\Local\TileDataLayer",',
-              '        "$profSrc\AppData\Local\ConnectedDevicesPlatform",',
-              '        "$profSrc\AppData\Local\Microsoft\Windows\Explorer",',
-              '        "$profSrc\AppData\Local\Microsoft\Windows\INetCache",',
-              '        "$profSrc\AppData\Local\Microsoft\Windows\WebCache",',
-              '        "$profSrc\AppData\Local\Microsoft\Windows\Caches",',
-              '        "$profSrc\AppData\Local\D3DSCache",',
-              '        "$profSrc\AppData\Local\NuGet",',
-              '        "$profSrc\AppData\Local\Package Cache",',
-              '        "$profSrc\AppData\Local\CrashDumps",',
-              '        "$profSrc\AppData\Local\pip",',
-              '        "$profSrc\AppData\Local\npm-cache",',
-              '        "$profSrc\AppData\Local\yarn",',
-              '        "$profSrc\AppData\Local\go-build",',
-              '        "$profSrc\AppData\Local\ms-playwright",',
-              '        "$profSrc\AppData\Local\Cypress",',
-              '        "$profSrc\.dotnet",',
-              '        "$profSrc\.nuget",',
-              '        "$profSrc\.m2",',
-              '        "$profSrc\.cargo",',
-              '        "$profSrc\.rustup",',
-              '        "$profSrc\.templateengine",',
-              '        "$profSrc\.azure",',
-              '        "$profSrc\.ServiceHub",',
-              '        "$profSrc\vcpkg"',
-              '    );',
-              '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD @excludeDirs *> $null;',
-              '    $global:LASTEXITCODE = 0;',
-              '}',
+               '    $priorityFolders = @("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music", "Favorites", "Links", "Saved Games", "Contacts", "Searches", "AppData\Roaming", "AppData\LocalLow");',
+               '    foreach ($pf in $priorityFolders) {',
+               '        $sDir = [System.IO.Path]::Combine("$profSrc", "$pf");',
+               '        $dDir = [System.IO.Path]::Combine("$profDst", "$pf");',
+               '        if (Test-Path "$sDir") {',
+               '            New-Item -ItemType Directory -Force -Path "$dDir" | Out-Null;',
+               '            robocopy "$sDir" "$dDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* *> $null;',
+               '        }',
+               '    }',
+               '    # Backup AppData\Local - giu session Discord, Sunshine, browser voi exclusion dung cu phap',
+               '    $localSrc = [System.IO.Path]::Combine("$profSrc", "AppData\Local");',
+               '    $localDst = [System.IO.Path]::Combine("$profDst", "AppData\Local");',
+               '    if (Test-Path "$localSrc") {',
+               '        New-Item -ItemType Directory -Force -Path "$localDst" | Out-Null;',
+               '        $xdLocal = @("$localSrc\Temp","$localSrc\Packages","$localSrc\TileDataLayer","$localSrc\ConnectedDevicesPlatform","$localSrc\Microsoft\Windows\Explorer","$localSrc\Microsoft\Windows\INetCache","$localSrc\Microsoft\Windows\WebCache","$localSrc\Microsoft\Windows\Caches","$localSrc\D3DSCache","$localSrc\NuGet","$localSrc\Package Cache","$localSrc\CrashDumps","$localSrc\pip","$localSrc\npm-cache","$localSrc\yarn","$localSrc\go-build","$localSrc\ms-playwright","$localSrc\Cypress");',
+                '        robocopy "$localSrc" "$localDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD "$localSrc\Temp" "$localSrc\Packages" "$localSrc\TileDataLayer" "$localSrc\ConnectedDevicesPlatform" "$localSrc\Microsoft\Windows\Explorer" "$localSrc\Microsoft\Windows\INetCache" "$localSrc\Microsoft\Windows\WebCache" "$localSrc\Microsoft\Windows\Caches" "$localSrc\D3DSCache" "$localSrc\NuGet" "$localSrc\Package Cache" "$localSrc\CrashDumps" "$localSrc\pip" "$localSrc\npm-cache" "$localSrc\yarn" "$localSrc\go-build" "$localSrc\ms-playwright" "$localSrc\Cypress" *> $null;',
+               '    $excludeDirs = @(',
+               '        "$profSrc\AppData\Local",',
+               '        "$profSrc\.dotnet",',
+               '        "$profSrc\.nuget",',
+               '        "$profSrc\.m2",',
+               '        "$profSrc\.cargo",',
+               '        "$profSrc\.rustup",',
+               '        "$profSrc\.templateengine",',
+               '        "$profSrc\.azure",',
+               '        "$profSrc\.ServiceHub",',
+               '        "$profSrc\vcpkg"',
+               '    );',
+                '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD "$profSrc\AppData\Local" "$profSrc\.dotnet" "$profSrc\.nuget" "$profSrc\.m2" "$profSrc\.cargo" "$profSrc\.rustup" "$profSrc\.templateengine" "$profSrc\.azure" "$profSrc\.ServiceHub" "$profSrc\vcpkg" *> $null;',
+               '}',
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {',
               '    try {',
               '        $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json;',
@@ -1002,11 +991,72 @@ jobs:
                       Add-Content -Path "$confFile" -Value "`r`norigin_web_ui_allowed = wan" -Encoding UTF8;
                   }
               }
+
+              # Ghi thêm cấu hình auto-login cho Sunshine Web UI (giảm yêu cầu nhập mật khẩu trên mobile)
+              $sunConf = Get-Content -Raw -Path "$confFile" -ErrorAction SilentlyContinue;
+              if ("$sunConf" -notmatch 'external_ip') {
+                  Add-Content -Path "$confFile" -Value "`r`nexternal_ip = $env:TAILSCALE_IP" -Encoding UTF8 -ErrorAction SilentlyContinue;
+              }
           } else {
               Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red;
           }
           $global:LASTEXITCODE = 0;
+
+          # ────────────────────────────────────────────────────────────
+          # Cài StartDeck (Playnite-based launcher) để tiện dùng trên điện thoại qua Moonlight
+          # ────────────────────────────────────────────────────────────
+          Write-Host "";
+          Write-Host "📱 4. ĐANG CÀI STARTDECK (Launcher tiện dùng trên điện thoại / Moonlight)..." -ForegroundColor Yellow;
+          try {
+              $startdeckDir = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'StartDeck');
+              New-Item -ItemType Directory -Force -Path "$startdeckDir" | Out-Null;
+
+              # Kiểm tra xem Playnite đã được cài trong phiên trước chưa
+              $playniteExe = [System.IO.Path]::Combine("$startdeckDir", 'Playnite.DesktopApp.exe');
+              if (-not (Test-Path "$playniteExe")) {
+                  Write-Host "│ 📦 Tải Playnite (full-screen launcher)..." -ForegroundColor Cyan;
+                  $playniteZip = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'playnite.zip');
+                  try {
+                      # Lấy phiên bản mới nhất từ GitHub
+                      $ghRelease = Invoke-RestMethod -Uri 'https://api.github.com/repos/JosefNemec/Playnite/releases/latest' -TimeoutSec 30 -ErrorAction Stop;
+                      $playniteAsset = $ghRelease.assets | Where-Object { $_.name -like '*Portable*' -and $_.name -like '*.zip' } | Select-Object -First 1;
+                      if ($playniteAsset) {
+                          Invoke-WebRequest -Uri $playniteAsset.browser_download_url -OutFile "$playniteZip" -UseBasicParsing -TimeoutSec 120;
+                          if (Test-Path "$playniteZip") {
+                              Expand-Archive -Path "$playniteZip" -DestinationPath "$startdeckDir" -Force;
+                              Remove-Item "$playniteZip" -Force -ErrorAction SilentlyContinue;
+                              Write-Host "│ ✅ Đã cài Playnite vào $startdeckDir" -ForegroundColor Green;
+                          }
+                      }
+                  } catch {
+                      Write-Host "│ ⚠️  Không tải được Playnite: $($_.Exception.Message)" -ForegroundColor Yellow;
+                  }
+              } else {
+                  Write-Host "│ ⚡ Playnite đã có sẵn từ phiên trước ($startdeckDir)!" -ForegroundColor Green;
+              }
+
+              # Tạo shortcut Playnite Fullscreen trên Desktop để Sunshine tự khởi động
+              if (Test-Path "$playniteExe") {
+                  $ws = New-Object -ComObject WScript.Shell;
+                  $desktopDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Desktop');
+                  $lnkStartdeck = $ws.CreateShortcut("$desktopDir\STARTDECK-LAUNCHER.lnk");
+                  $lnkStartdeck.TargetPath = "$playniteExe";
+                  $lnkStartdeck.Arguments = '--startfullscreen';
+                  $lnkStartdeck.WorkingDirectory = "$startdeckDir";
+                  $lnkStartdeck.Save();
+                  $lnkPublic = $ws.CreateShortcut("C:\Users\Public\Desktop\STARTDECK-LAUNCHER.lnk");
+                  $lnkPublic.TargetPath = "$playniteExe";
+                  $lnkPublic.Arguments = '--startfullscreen';
+                  $lnkPublic.WorkingDirectory = "$startdeckDir";
+                  $lnkPublic.Save();
+                  Write-Host "│ ✅ Đã tạo shortcut StartDeck trên Desktop (tiện dùng Moonlight / mobile)" -ForegroundColor Green;
+              }
+          } catch {
+              Write-Host "│ ⚠️  StartDeck lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+          $global:LASTEXITCODE = 0;
           exit 0;
+
 
       # ───────────────────────────────────────────────
       # 7. TAILSCALE
@@ -1499,12 +1549,18 @@ jobs:
                       & "$saveScript" -Reason 'manual-web-save';
                       $global:LASTEXITCODE = 0;
                   } elseif ("$cmd" -eq 'RESTART_SESSION') {
-                      Write-Host "🔁 [WEB-PANEL] Nhận lệnh LƯU & KHỞI ĐỘNG LẠI PHIÊN MỚI từ Web Quản Lý!" -ForegroundColor Yellow;
-                      'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV";
+                      Write-Host "🔁 [WEB-PANEL] Đang LƯU DỮ LIỆU trước khi khởi động lại phiên mới..." -ForegroundColor Yellow;
+                      & "$saveScript" -Reason 'pre-restart';
+                      $global:LASTEXITCODE = 0;
+                      Write-Host "🔁 [WEB-PANEL] Lưu xong! Đang chuẩn bị kích hoạt phiên mới..." -ForegroundColor Yellow;
+                      Set-Content -Path "$env:RUNNER_TEMP\aistv-session-mode.txt" -Value 'RESTART' -Encoding UTF8;
                       break;
                   } elseif ("$cmd" -eq 'STOP_SESSION') {
-                      Write-Host "🛑 [WEB-PANEL] Nhận lệnh LƯU & TẮT HẲN SERVER từ Web Quản Lý!" -ForegroundColor Red;
-                      'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV";
+                      Write-Host "🛑 [WEB-PANEL] Đang LƯU DỮ LIỆU trước khi tắt server..." -ForegroundColor Red;
+                      & "$saveScript" -Reason 'pre-stop';
+                      $global:LASTEXITCODE = 0;
+                      Write-Host "🛑 [WEB-PANEL] Lưu xong! Đang tắt server..." -ForegroundColor Red;
+                      Set-Content -Path "$env:RUNNER_TEMP\aistv-session-mode.txt" -Value 'STOP' -Encoding UTF8;
                       break;
                   }
               }
@@ -1580,15 +1636,34 @@ jobs:
         shell: pwsh
         run: |
           $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
+          $sessionModeFile = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'aistv-session-mode.txt');
           if (-not (Test-Path "$saveScript")) {
               Write-Host 'ℹ️ Không có script lưu, bỏ qua' -ForegroundColor Cyan;
               exit 0;
           }
 
+          # Kiểm tra xem save đã được gọi từ vòng lặp chưa (pre-restart / pre-stop)
+          $sessionMode = '';
+          if (Test-Path "$sessionModeFile") {
+              $sessionMode = (Get-Content -Raw -Path "$sessionModeFile" -ErrorAction SilentlyContinue).Trim();
+          }
+
           Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
           Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
 
-          & "$saveScript" -Reason 'session-end';
+          if (($sessionMode -eq 'RESTART') -or ($sessionMode -eq 'STOP')) {
+              Write-Host "ℹ️ Dữ liệu đã được lưu trước (mode: $sessionMode), bỏ qua lưu lại để tránh trùng lặp" -ForegroundColor Cyan;
+          } else {
+              & "$saveScript" -Reason 'session-end';
+          }
+
+          # Ghi flag mode vào GITHUB_ENV để bước auto-restart đọc
+          if ($sessionMode -eq 'STOP') {
+              'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV";
+          } elseif ($sessionMode -eq 'RESTART') {
+              'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV";
+          }
+
           $global:LASTEXITCODE = 0;
           exit 0;
 
@@ -1642,14 +1717,16 @@ jobs:
           PKGS: ${{ inputs.choco_packages }}
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
+          VHD_SIZE: ${{ inputs.vhd_size_gb }}
         run: |
           $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0]);
           $optStr  = ("$env:OPT").ToLower();
           $ddnsStr = ("$env:DDNS").ToLower();
 
-          Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan;
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
+          $vhdSize = if ("$env:VHD_SIZE") { "$env:VHD_SIZE" } else { '45' };
+          Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\ (VHD: ${vhdSize}GB)" -ForegroundColor Cyan;
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$vhdSize" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
           if (($LASTEXITCODE) -ne 0) {
               throw 'Không kích hoạt được phiên mới';
           }
-          Write-Host "✅ Đã kích hoạt phiên tiếp theo" -ForegroundColor Green;
+          Write-Host "✅ Đã kích hoạt phiên tiếp theo (VHD: ${vhdSize}GB)" -ForegroundColor Green;
