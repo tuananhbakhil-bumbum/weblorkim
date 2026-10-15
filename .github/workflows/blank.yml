@@ -1,4 +1,4 @@
-name: siêu bá ki của đạt lor kim (github native persistence + sunshine vdd + stardesk)
+name: siêu bá ki của đạt lor kim (github native persistence + sunshine vdd)
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ on:
         default: 'Aistv@2026'
         type: string
       vdd_resolution:
-        description: '🖥️ Độ phân giải màn hình ảo mặc định cho Sunshine & StarDesk'
+        description: '🖥️ Độ phân giải màn hình ảo mặc định cho Sunshine'
         required: false
         default: '1920x1080@60'
         type: choice
@@ -50,11 +50,6 @@ on:
           - '1920x1080@120'
           - '2560x1440@60'
           - '3840x2160@60'
-      stardesk_download_url:
-        description: '🚀 Link tải StarDesk .exe trực tiếp (Để trống sẽ tự động dò từ stardesk.net)'
-        required: false
-        default: ''
-        type: string
       choco_packages:
         description: '📦 App cài thêm bằng choco (tự động lưu vết sang phiên sau)'
         required: false
@@ -118,6 +113,7 @@ jobs:
           "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV";
           "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV";
 
+          # Dùng thẳng 100% User gốc của hệ thống (runneradmin), không đổi tên
           $user     = "$env:USERNAME";
           $profPath = "$env:USERPROFILE";
           "RDP_USER=$user" >> "$env:GITHUB_ENV";
@@ -203,7 +199,7 @@ jobs:
           Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $user ($profPath)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
-      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB (BAO GỒM STARDESK & SUNSHINE)
+      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
       # ───────────────────────────────────────────────
       - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
         shell: pwsh
@@ -222,24 +218,59 @@ jobs:
               '    Write-Host "ℹ️ Chưa thấy ổ đĩa chung, bỏ qua";',
               '    exit 0;',
               '}',
-              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, Sunshine, StarDesk, Profile gốc & App..." -ForegroundColor Cyan;',
+              'Write-Host "💾 [$Reason] Đang đóng an toàn các trình duyệt & ứng dụng để nhả khóa file Cookie/Session..." -ForegroundColor Cyan;',
+              '$appsToClose = @("chrome", "msedge", "brave", "firefox", "coccoc", "opera", "vivaldi", "discord", "Telegram", "Zalo", "steam", "EpicGamesLauncher", "Spotify", "Code", "Notion");',
+              'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object {',
+              '    $null = $_.CloseMainWindow();',
+              '};',
+              'Start-Sleep -Seconds 3;',
+              'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;',
+              'Start-Sleep -Seconds 2;',
+              '',
+              'Write-Host "🔑 [$Reason] Đang giải mã khóa DPAPI (Local State) để di chuyển phiên đăng nhập sang máy mới..." -ForegroundColor Cyan;',
+              'Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue;',
+              '$u = "$env:RDP_USER";',
+              '$profSrc = "$env:PROFILE_PATH";',
+              'if (("$profSrc") -and (Test-Path "$profSrc\AppData")) {',
+              '    Get-ChildItem -Path "$profSrc\AppData" -Filter "Local State" -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {',
+              '        try {',
+              '            $lsFile = $_.FullName;',
+              '            $lsJson = Get-Content -Raw -Path "$lsFile" -Encoding UTF8 | ConvertFrom-Json;',
+              '            if ($lsJson.os_crypt -and $lsJson.os_crypt.encrypted_key) {',
+              '                $encBytes = [Convert]::FromBase64String($lsJson.os_crypt.encrypted_key);',
+              '                if ($encBytes.Length -gt 5) {',
+              '                    $prefix = [System.Text.Encoding]::ASCII.GetString($encBytes[0..4]);',
+              '                    if ($prefix -eq "DPAPI") {',
+              '                        $cipher = $encBytes[5..($encBytes.Length - 1)];',
+              '                        $rawKey = [System.Security.Cryptography.ProtectedData]::Unprotect($cipher, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser);',
+              '                        [Convert]::ToBase64String($rawKey) | Set-Content -Path "$lsFile.aistvkey" -Encoding ASCII -Force;',
+              '                    }',
+              '                }',
+              '            }',
+              '        } catch {}',
+              '    };',
+              '}',
+              '',
+              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, MachineGuid, Display, Audio, Sunshine, Profile gốc & App..." -ForegroundColor Cyan;',
               '$regBk = [System.IO.Path]::Combine("$osDir", "Registry");',
               'New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;',
-              '# Sao lưu MachineGuid để StarDesk giữ nguyên định danh thiết bị & không bắt đăng nhập lại',
+              '# Sao lưu MachineGuid & MachineId để các App nhận diện đúng thiết bị cũ',
               'reg export "HKLM\SOFTWARE\Microsoft\Cryptography" "$regBk\Machine-Cryptography.reg" /y *> $null;',
-              '# Sao lưu toàn bộ khóa Registry của StarDesk / GameViewer / NetEase',
-              'reg export "HKCU\Software\StarDesk" "$regBk\StarDesk-HKCU.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\StarDesk" "$regBk\StarDesk-HKLM.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\WOW6432Node\StarDesk" "$regBk\StarDesk-HKLM86.reg" /y *> $null;',
-              'reg export "HKCU\Software\GameViewer" "$regBk\GameViewer-HKCU.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\GameViewer" "$regBk\GameViewer-HKLM.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\WOW6432Node\GameViewer" "$regBk\GameViewer-HKLM86.reg" /y *> $null;',
-              'reg export "HKCU\Software\Netease" "$regBk\Netease-HKCU.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\Netease" "$regBk\Netease-HKLM.reg" /y *> $null;',
-              'reg export "HKLM\SOFTWARE\WOW6432Node\Netease" "$regBk\Netease-HKLM86.reg" /y *> $null;',
+              'reg export "HKLM\SOFTWARE\Microsoft\SQMClient" "$regBk\Machine-SQMClient.reg" /y *> $null;',
+              '# Sao lưu cấu hình & token đăng nhập của các App trong HKCU\Software',
+              'New-Item -ItemType Directory -Force -Path "$regBk\AppSoftware" | Out-Null;',
+              'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object {',
+              '    $_.PSChildName -notin @("Microsoft", "Classes", "Policies", "RegisteredApplications")',
+              '} | ForEach-Object {',
+              '    $subName = $_.PSChildName;',
+              '    $safeName = ($subName -replace ''[^A-Za-z0-9._\-]'', ''_'');',
+              '    reg export "HKCU\Software\$subName" "$regBk\AppSoftware\App-$safeName.reg" /y *> $null;',
+              '};',
+              'reg export "HKCU\Environment" "$regBk\User-Env.reg" /y *> $null;',
+              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" "$regBk\User-StartupRun.reg" /y *> $null;',
               '# Sao lưu Độ phân giải, Tỷ lệ Scale (DPI) & Cấu hình màn hình',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null;',
@@ -253,45 +284,17 @@ jobs:
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null;',
-              '# Sao lưu chuyên biệt dữ liệu đăng nhập StarDesk (AppData + ProgramData)',
-              '$sdPersist = [System.IO.Path]::Combine("$osDir", "StarDesk-Persist");',
-              'New-Item -ItemType Directory -Force -Path "$sdPersist" | Out-Null;',
-              '$sdFolders = @(',
-              '    @{ Name = "Roaming-StarDesk";   Path = "$env:APPDATA\StarDesk" },',
-              '    @{ Name = "Local-StarDesk";     Path = "$env:LOCALAPPDATA\StarDesk" },',
-              '    @{ Name = "Prog-StarDesk";      Path = "$env:LOCALAPPDATA\Programs\StarDesk" },',
-              '    @{ Name = "PD-StarDesk";        Path = "C:\ProgramData\StarDesk" },',
-              '    @{ Name = "Roaming-GameViewer"; Path = "$env:APPDATA\GameViewer" },',
-              '    @{ Name = "Local-GameViewer";   Path = "$env:LOCALAPPDATA\GameViewer" },',
-              '    @{ Name = "PD-GameViewer";      Path = "C:\ProgramData\GameViewer" },',
-              '    @{ Name = "Roaming-Netease";    Path = "$env:APPDATA\Netease" },',
-              '    @{ Name = "Local-Netease";      Path = "$env:LOCALAPPDATA\Netease" },',
-              '    @{ Name = "PD-Netease";         Path = "C:\ProgramData\Netease" }',
-              ');',
-              'foreach ($item in $sdFolders) {',
-              '    if (Test-Path ($item.Path)) {',
-              '        $dst = [System.IO.Path]::Combine("$sdPersist", $item.Name);',
-              '        New-Item -ItemType Directory -Force -Path "$dst" | Out-Null;',
-              '        robocopy ($item.Path) "$dst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;',
-              '    }',
-              '}',
+              '# Đảm bảo xóa bỏ thư mục Drivers-Backup cũ (tránh kẹt pnputil khi khôi phục)',
               '$drvBk = [System.IO.Path]::Combine("$osDir", "Drivers-Backup");',
               'if (Test-Path "$drvBk") { Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue; }',
-              '$u = "$env:RDP_USER";',
-              '$profSrc = "$env:PROFILE_PATH";',
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
               '    $profDst = [System.IO.Path]::Combine("$root", "Users", "$u");',
               '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;',
-              '    $priorityFolders = @("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music", "Favorites", "Links", "Saved Games", "Contacts", "Searches", "AppData\Roaming", "AppData\LocalLow");',
-              '    foreach ($pf in $priorityFolders) {',
-              '        $sDir = [System.IO.Path]::Combine("$profSrc", "$pf");',
-              '        $dDir = [System.IO.Path]::Combine("$profDst", "$pf");',
-              '        if (Test-Path "$sDir") {',
-              '            New-Item -ItemType Directory -Force -Path "$dDir" | Out-Null;',
-              '            robocopy "$sDir" "$dDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* *> $null;',
-              '        }',
-              '    }',
               '    $excludeDirs = @(',
+              '        "$profSrc\AppData\Roaming\Microsoft\Protect",',
+              '        "$profSrc\AppData\Roaming\Microsoft\Crypto",',
+              '        "$profSrc\AppData\Local\Microsoft\Credentials",',
+              '        "$profSrc\AppData\Roaming\Microsoft\Credentials",',
               '        "$profSrc\AppData\Local\Temp",',
               '        "$profSrc\AppData\Local\Packages",',
               '        "$profSrc\AppData\Local\TileDataLayer",',
@@ -320,7 +323,7 @@ jobs:
               '        "$profSrc\.ServiceHub",',
               '        "$profSrc\vcpkg"',
               '    );',
-              '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD @excludeDirs *> $null;',
+              '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:2 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @excludeDirs *> $null;',
               '    $global:LASTEXITCODE = 0;',
               '}',
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {',
@@ -460,6 +463,25 @@ jobs:
         shell: pwsh
         run: |
           $dl = "$env:MOUNT_LETTER";
+
+          # 1. Tắt App-Bound Encryption cho các trình duyệt Chromium để Cookie không bị hủy khi đổi máy ảo
+          @(
+              'HKLM:\SOFTWARE\Policies\Google\Chrome',
+              'HKLM:\SOFTWARE\Policies\Microsoft\Edge',
+              'HKLM:\SOFTWARE\Policies\BraveSoftware\Brave',
+              'HKLM:\SOFTWARE\Policies\CocCoc\Browser'
+          ) | ForEach-Object {
+              New-Item -Path "$_" -Force | Out-Null;
+              Set-ItemProperty -Path "$_" -Name 'ApplicationBoundEncryptionEnabled' -Value 0 -Type DWord -Force;
+          };
+
+          # 2. Cố định tên máy (ComputerName / Hostname) để Zalo, Steam, Telegram, Discord không báo thiết bị lạ
+          $fixedHost = 'AISTV-CLOUD-PC';
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'NV Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
+
           $dlDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'gh-restore');
           if (Test-Path "$dlDir") {
               Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue;
@@ -510,6 +532,7 @@ jobs:
           $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null;
 
+          # Xóa thư mục Drivers-Backup từ bản lưu cũ để không làm nặng ổ và không treo pnputil
           $drvBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Drivers-Backup');
           if (Test-Path "$drvBk") {
               Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue;
@@ -541,13 +564,29 @@ jobs:
               }
           }
           if (Test-Path "$oldProf") {
+              # Xóa sạch thư mục DPAPI Protect/Credentials của SID cũ nếu còn sót lại từ các bản lưu trước
+              @(
+                  "$oldProf\AppData\Roaming\Microsoft\Protect",
+                  "$oldProf\AppData\Roaming\Microsoft\Crypto",
+                  "$oldProf\AppData\Local\Microsoft\Credentials",
+                  "$oldProf\AppData\Roaming\Microsoft\Credentials"
+              ) | ForEach-Object {
+                  if (Test-Path "$_") {
+                      Remove-Item -Path "$_" -Recurse -Force -ErrorAction SilentlyContinue;
+                  }
+              };
+
               $skipRestoreDirs = @(
+                  "$oldProf\AppData\Roaming\Microsoft\Protect",
+                  "$oldProf\AppData\Roaming\Microsoft\Crypto",
+                  "$oldProf\AppData\Local\Microsoft\Credentials",
+                  "$oldProf\AppData\Roaming\Microsoft\Credentials",
                   "$oldProf\AppData\Local\Packages",
                   "$oldProf\AppData\Local\TileDataLayer",
                   "$oldProf\AppData\Local\ConnectedDevicesPlatform",
                   "$oldProf\AppData\Local\Microsoft\Windows\Explorer"
               );
-              robocopy "$oldProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs *> $null;
+              robocopy "$oldProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @skipRestoreDirs *> $null;
               $global:LASTEXITCODE = 0;
               Write-Host "✅ Đã nạp thẳng dữ liệu Profile cũ vào User gốc ($env:PROFILE_PATH)" -ForegroundColor Green;
           } else {
@@ -555,39 +594,13 @@ jobs:
           }
           Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue;
 
-          # Khôi phục chuyên biệt dữ liệu đăng nhập StarDesk (AppData + ProgramData)
-          $sdPersist = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'StarDesk-Persist');
-          if (Test-Path "$sdPersist") {
-              $sdRestoreMap = @(
-                  @{ Name = 'Roaming-StarDesk';   Path = "$env:APPDATA\StarDesk" },
-                  @{ Name = 'Local-StarDesk';     Path = "$env:LOCALAPPDATA\StarDesk" },
-                  @{ Name = 'Prog-StarDesk';      Path = "$env:LOCALAPPDATA\Programs\StarDesk" },
-                  @{ Name = 'PD-StarDesk';        Path = 'C:\ProgramData\StarDesk' },
-                  @{ Name = 'Roaming-GameViewer'; Path = "$env:APPDATA\GameViewer" },
-                  @{ Name = 'Local-GameViewer';   Path = "$env:LOCALAPPDATA\GameViewer" },
-                  @{ Name = 'PD-GameViewer';      Path = 'C:\ProgramData\GameViewer' },
-                  @{ Name = 'Roaming-Netease';    Path = "$env:APPDATA\Netease" },
-                  @{ Name = 'Local-Netease';      Path = "$env:LOCALAPPDATA\Netease" },
-                  @{ Name = 'PD-Netease';         Path = 'C:\ProgramData\Netease' }
-              );
-              foreach ($item in $sdRestoreMap) {
-                  $src = [System.IO.Path]::Combine("$sdPersist", $item.Name);
-                  if (Test-Path "$src") {
-                      New-Item -ItemType Directory -Force -Path ($item.Path) | Out-Null;
-                      robocopy "$src" ($item.Path) /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
-                  }
-              }
-              $global:LASTEXITCODE = 0;
-              Write-Host "✅ Đã khôi phục dữ liệu tài khoản & cấu hình StarDesk" -ForegroundColor Green;
-          }
-
           $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry');
           if (Test-Path "$regBk") {
-              Get-ChildItem -Path "$regBk" -Filter '*.reg' | ForEach-Object {
+              Get-ChildItem -Path "$regBk" -Filter '*.reg' -Recurse | ForEach-Object {
                   reg import ($_.FullName) *>$null;
               };
               & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True;
-              Write-Host "✅ Đã nạp lại Registry hệ thống, MachineGuid, StarDesk Token & Cài đặt Windows" -ForegroundColor Green;
+              Write-Host "✅ Đã nạp lại Registry hệ thống, MachineGuid, HKCU\Software, Hình nền & Cài đặt Windows" -ForegroundColor Green;
           }
 
           if (Test-Path "$env:SHARED_STATE_FILE") {
@@ -619,10 +632,9 @@ jobs:
           $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache');
           $instCache  = [System.IO.Path]::Combine("$osDir", 'Installers');
           $sunCfgDir  = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config');
-          $sdCfgDir   = [System.IO.Path]::Combine("$osDir", 'StarDesk-Persist');
           $dl         = "$env:MOUNT_LETTER";
 
-          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "$sunCfgDir", "$sdCfgDir", "${dl}:\Apps") | ForEach-Object {
+          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "$sunCfgDir", "${dl}:\Apps") | ForEach-Object {
               New-Item -ItemType Directory -Force -Path "$_" | Out-Null;
           };
 
@@ -638,22 +650,21 @@ jobs:
 
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV";
           "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV";
-          "STARDESK_PERSIST_CFG=$sdCfgDir" >> "$env:GITHUB_ENV";
 
           Write-Host "";
-          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE + STARDESK SERVER (NATIVE RUNNERADMIN)" -ForegroundColor Yellow;
+          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER (NATIVE RUNNERADMIN)" -ForegroundColor Yellow;
           Write-Host "🗂️ Ổ đĩa riêng: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan;
           Write-Host "👤 User gốc: $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan;
           Write-Host "🕒 Thời gian: $env:DISPLAY_TIME" -ForegroundColor Magenta;
 
       # ───────────────────────────────────────────────
-      # 5. CẤU HÌNH RDP, MỞ PORT SUNSHINE / STARDESK / WEB & TỐI ƯU WINDOWS
+      # 5. CẤU HÌNH RDP, MỞ PORT SUNSHINE / WEB & TỐI ƯU WINDOWS
       # ───────────────────────────────────────────────
-      - name: 🔧 CẤU HÌNH HỆ THỐNG & FIREWALL (RDP + SUNSHINE + STARDESK + WEB)
+      - name: 🔧 CẤU HÌNH HỆ THỐNG & FIREWALL (RDP + SUNSHINE + WEB)
         shell: pwsh
         run: |
           Write-Host "";
-          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE, STARDESK & WEB PANEL" -ForegroundColor Yellow;
+          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE & WEB PANEL" -ForegroundColor Yellow;
 
           $stepsList = @(
               @{Name = "Bật Remote Desktop"; Script = {
@@ -772,19 +783,17 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO, SUNSHINE & STARDESK
+      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO ĐA TẦNG & SUNSHINE
       # ───────────────────────────────────────────────
-      - name: 🖥️🔊☀️🚀 Cài Màn Hình Ảo (VDD), Âm Thanh Ảo, Sunshine & StarDesk Tự Động
+      - name: 🖥️🔊☀️ Cài Màn Hình Ảo (VDD), Âm Thanh Ảo Tự Động (VB-Audio + Fallback) & Sunshine
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
-          STARDESK_URL_INPUT: ${{ inputs.stardesk_download_url }}
         run: |
           $ErrorActionPreference = 'Continue';
           $ProgressPreference    = 'SilentlyContinue';
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
-          $sdPersistCfg          = "$env:STARDESK_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
 
           Write-Host "";
@@ -877,6 +886,7 @@ jobs:
           Write-Host "";
           Write-Host "🔊  2. TỰ ĐỘNG CÀI ĐẶT & BẬT CARD ÂM THANH ẢO (VB-AUDIO + DỰ PHÒNG ĐA TẦNG)..." -ForegroundColor Yellow;
           try {
+              # Bước 2.1: Bật toàn bộ dịch vụ âm thanh gốc của Windows Server
               @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object {
                   Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue;
                   Start-Service -Name "$_" -ErrorAction SilentlyContinue;
@@ -897,6 +907,7 @@ jobs:
                   Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force;
               }
 
+              # Nạp chứng chỉ số từ cả file .cer lẫn chữ ký Authenticode trong file .cat/.sys/.exe để Windows không chặn Driver
               Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
                   if ($_.Extension -eq '.cer') {
                       Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
@@ -916,6 +927,7 @@ jobs:
                   }
               };
 
+              # Tầng 1: Nạp INF + Ép tạo thiết bị phần cứng ảo VBAudioVACWDM bằng deviceinstaller64 + VBCABLE_Setup_x64
               $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
               if (-not ($vbInf)) {
                   $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
@@ -943,6 +955,7 @@ jobs:
                   Remove-Job -Job ($vbJob) -Force -ErrorAction SilentlyContinue;
               }
 
+              # Tầng 2 (Dự phòng): Nếu chưa lên thiết bị âm thanh, tự động cài vb-cable qua Chocolatey
               $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 2: Cài đặt gói vb-cable tự động qua Chocolatey..." -ForegroundColor Cyan;
@@ -957,6 +970,7 @@ jobs:
                   Remove-Job -Job ($chocoVbJob) -Force -ErrorAction SilentlyContinue;
               }
 
+              # Tầng 3 (Dự phòng): Tìm & cài thêm Virtual Audio Cable (VAC) nếu vẫn chưa có thiết bị MEDIA
               $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 3: Cài đặt Virtual Audio Cable dự phòng..." -ForegroundColor Cyan;
@@ -970,6 +984,7 @@ jobs:
                   Remove-Job -Job ($vacJob) -Force -ErrorAction SilentlyContinue;
               }
 
+              # Quét lại thiết bị PnP, bật toàn bộ thiết bị âm thanh và khởi động lại Audiosrv
               pnputil /scan-devices *> $null;
               Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'OK' } | ForEach-Object {
                   Enable-PnpDevice -InstanceId ($_.InstanceId) -Confirm:($false) -ErrorAction SilentlyContinue *> $null;
@@ -1065,159 +1080,6 @@ jobs:
           } else {
               Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red;
           }
-
-          Write-Host "";
-          Write-Host "🚀  4. ĐANG TỰ ĐỘNG TÌM, CÀI ĐẶT & GẮN KẾT LƯU ĐĂNG NHẬP STARDESK..." -ForegroundColor Yellow;
-
-          function Find-StarDeskExe {
-              $candidates = @(
-                  'C:\Program Files\StarDesk\StarDesk.exe',
-                  'C:\Program Files (x86)\StarDesk\StarDesk.exe',
-                  'C:\Program Files\Netease\GameViewer\GameViewer.exe',
-                  'C:\Program Files (x86)\Netease\GameViewer\GameViewer.exe',
-                  "$env:LOCALAPPDATA\Programs\StarDesk\StarDesk.exe",
-                  "$env:LOCALAPPDATA\StarDesk\StarDesk.exe",
-                  "$env:LOCALAPPDATA\GameViewer\GameViewer.exe",
-                  "${dl}:\Apps\StarDesk\StarDesk.exe",
-                  "${dl}:\Apps\StarDesk\GameViewer.exe"
-              );
-              foreach ($c in $candidates) {
-                  if (Test-Path "$c") { return "$c"; }
-              }
-              $found = Get-ChildItem -Path 'C:\Program Files', 'C:\Program Files (x86)', "$env:LOCALAPPDATA" -Include 'StarDesk.exe', 'GameViewer.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1;
-              if ($found) { return $found.FullName; }
-              return $null;
-          }
-
-          $sdExe = Find-StarDeskExe;
-          $sdCacheDir = [System.IO.Path]::Combine("$instCache", 'StarDesk');
-          New-Item -ItemType Directory -Force -Path "$sdCacheDir" | Out-Null;
-          $sdSetupExe = [System.IO.Path]::Combine("$sdCacheDir", 'StarDeskSetup.exe');
-
-          if (-not ($sdExe)) {
-              # 1. Tìm link tải bộ cài StarDesk nếu chưa có sẵn trong ổ X:\
-              if ((-not (Test-Path "$sdSetupExe")) -or ((Get-Item "$sdSetupExe").Length -lt 5MB)) {
-                  $dlUrl = ("$env:STARDESK_URL_INPUT").Trim();
-                  if (-not ($dlUrl)) {
-                      Write-Host "│ 🔍 Đang tự động dò link tải StarDesk mới nhất từ stardesk.net..." -ForegroundColor Cyan;
-                      $pages = @(
-                          'https://www.stardesk.net/download/',
-                          'https://www.stardesk.net/vi/download/',
-                          'https://www.stardesk.net/'
-                      );
-                      foreach ($pUrl in $pages) {
-                          if (-not ($dlUrl)) {
-                              try {
-                                  $html = (Invoke-WebRequest -Uri "$pUrl" -UseBasicParsing -TimeoutSec 20).Content;
-                                  $m = [regex]::Match("$html", 'https?://[^\s"''<>]+?\.(?:exe|msi)(?:\?[^\s"''<>]*)?', 'IgnoreCase');
-                                  if ($m.Success) {
-                                      $dlUrl = $m.Value;
-                                  }
-                              } catch {}
-                          }
-                      }
-                  }
-
-                  if ($dlUrl) {
-                      Write-Host "│ ⬇️  Đang tải bộ cài StarDesk từ: $dlUrl" -ForegroundColor Cyan;
-                      try {
-                          Invoke-WebRequest -Uri "$dlUrl" -OutFile "$sdSetupExe" -UseBasicParsing -TimeoutSec 90;
-                      } catch {
-                          Write-Host "│ ⚠️  Lỗi tải từ link chính: $($_.Exception.Message)" -ForegroundColor Yellow;
-                      }
-                  }
-
-                  # Dự phòng: Nếu trang chủ đổi cấu trúc JS, thử cài hoặc lấy qua winget (NetEase.UURemote / StarDesk)
-                  if ((-not (Test-Path "$sdSetupExe")) -or ((Get-Item "$sdSetupExe").Length -lt 5MB)) {
-                      Write-Host "│ 🔄 Đang thử tìm & tải qua kho Winget / CDN dự phòng..." -ForegroundColor Cyan;
-                      try {
-                          $wgManifest = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/n/NetEase/UURemote' -TimeoutSec 20;
-                          $latestVer = @($wgManifest | Where-Object { $_.type -eq 'dir' } | Sort-Object name -Descending | Select-Object -First 1).name;
-                          if ($latestVer) {
-                              $yamlUrl = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/n/NetEase/UURemote/$latestVer/NetEase.UURemote.installer.yaml";
-                              $yamlTxt = Invoke-RestMethod -Uri "$yamlUrl" -TimeoutSec 20;
-                              $mUrl = [regex]::Match("$yamlTxt", 'InstallerUrl:\s*(https?://\S+\.exe)', 'IgnoreCase');
-                              if ($mUrl.Success) {
-                                  Invoke-WebRequest -Uri ($mUrl.Groups[1].Value) -OutFile "$sdSetupExe" -UseBasicParsing -TimeoutSec 90;
-                              }
-                          }
-                      } catch {}
-                  }
-              }
-
-              # 2. Thực hiện cài đặt ngầm StarDesk (khống chế timeout 60s chống treo)
-              if ((Test-Path "$sdSetupExe") -and ((Get-Item "$sdSetupExe").Length -ge 5MB)) {
-                  Write-Host "│ 📦 Đang cài đặt tự động StarDesk từ bộ cài đã lưu ($sdSetupExe)..." -ForegroundColor Cyan;
-                  $sdArgsList = @('/S', '/silent', '/verysilent', '/quiet');
-                  foreach ($arg in $sdArgsList) {
-                      if (-not (Find-StarDeskExe)) {
-                          $sdJob = Start-Job -ScriptBlock {
-                              param($exe, $a)
-                              Start-Process -FilePath "$exe" -ArgumentList "$a" -Wait;
-                          } -ArgumentList "$sdSetupExe", "$arg";
-                          $doneSd = Wait-Job -Job ($sdJob) -Timeout 45;
-                          if (-not ($doneSd)) {
-                              Stop-Job -Job ($sdJob) -ErrorAction SilentlyContinue;
-                              Get-Process | Where-Object { $_.Name -match 'StarDeskSetup|UURemote_Setup' } | Stop-Process -Force -ErrorAction SilentlyContinue;
-                          }
-                          Remove-Job -Job ($sdJob) -Force -ErrorAction SilentlyContinue;
-                      }
-                  }
-                  $sdExe = Find-StarDeskExe;
-              }
-          } else {
-              Write-Host "│ ⚡ Đã khôi phục sẵn StarDesk từ ổ ${dl}:\ ($sdExe)!" -ForegroundColor Green;
-          }
-
-          # 3. Đồng bộ & Gắn kết Junction dữ liệu đăng nhập StarDesk sang ổ X:\
-          $sdFoldersToLink = @(
-              @{ Name = 'Roaming-StarDesk';   Path = "$env:APPDATA\StarDesk" },
-              @{ Name = 'Local-StarDesk';     Path = "$env:LOCALAPPDATA\StarDesk" },
-              @{ Name = 'PD-StarDesk';        Path = 'C:\ProgramData\StarDesk' },
-              @{ Name = 'Roaming-GameViewer'; Path = "$env:APPDATA\GameViewer" },
-              @{ Name = 'Local-GameViewer';   Path = "$env:LOCALAPPDATA\GameViewer" },
-              @{ Name = 'PD-GameViewer';      Path = 'C:\ProgramData\GameViewer' },
-              @{ Name = 'Roaming-Netease';    Path = "$env:APPDATA\Netease" },
-              @{ Name = 'Local-Netease';      Path = "$env:LOCALAPPDATA\Netease" },
-              @{ Name = 'PD-Netease';         Path = 'C:\ProgramData\Netease' }
-          );
-
-          Get-Process -Name 'StarDesk*', 'GameViewer*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
-          Start-Sleep -Seconds 1;
-
-          foreach ($map in $sdFoldersToLink) {
-              $persistSub = [System.IO.Path]::Combine("$sdPersistCfg", $map.Name);
-              New-Item -ItemType Directory -Force -Path "$persistSub" | Out-Null;
-              $targetPath = $map.Path;
-
-              if (Test-Path "$targetPath") {
-                  $itemObj = Get-Item "$targetPath" -Force -ErrorAction SilentlyContinue;
-                  if ($itemObj -and (($itemObj.Attributes) -notmatch 'ReparsePoint')) {
-                      if ((@(Get-ChildItem "$persistSub" -Force -ErrorAction SilentlyContinue).Count) -eq 0) {
-                          Copy-Item -Path "$targetPath\*" -Destination "$persistSub" -Recurse -Force -ErrorAction SilentlyContinue;
-                      }
-                      Remove-Item -Path "$targetPath" -Recurse -Force -ErrorAction SilentlyContinue;
-                      New-Item -ItemType Junction -Path "$targetPath" -Target "$persistSub" -Force -ErrorAction SilentlyContinue | Out-Null;
-                  }
-              } else {
-                  $parentDir = Split-Path -Parent "$targetPath";
-                  if (-not (Test-Path "$parentDir")) {
-                      New-Item -ItemType Directory -Force -Path "$parentDir" | Out-Null;
-                  }
-                  New-Item -ItemType Junction -Path "$targetPath" -Target "$persistSub" -Force -ErrorAction SilentlyContinue | Out-Null;
-              }
-          }
-          Write-Host "│ ✅ Đã ánh xạ toàn bộ thư mục lưu tài khoản đăng nhập StarDesk <-> $sdPersistCfg" -ForegroundColor Green;
-
-          if ($sdExe) {
-              "STARDESK_EXE=$sdExe" >> "$env:GITHUB_ENV";
-              Remove-NetFirewallRule -DisplayName 'StarDesk-Direct-P2P' -ErrorAction SilentlyContinue;
-              New-NetFirewallRule -DisplayName 'StarDesk-Direct-P2P' -Direction Inbound -Action Allow -Program "$sdExe" -Profile Any -ErrorAction SilentlyContinue | Out-Null;
-              Write-Host "│ ✅ Đã cấu hình sẵn sàng StarDesk tại: $sdExe" -ForegroundColor Green;
-          } else {
-              Write-Host "│ ⚠️  Chưa thấy file thực thi StarDesk (Bạn có thể cài thủ công 1 lần vào C:\Program Files\StarDesk, ổ ${dl}:\ sẽ tự lưu vĩnh viễn cho các phiên sau)" -ForegroundColor Yellow;
-          }
-
           $global:LASTEXITCODE = 0;
           exit 0;
 
@@ -1322,9 +1184,9 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 8. CẤU HÌNH MẬT KHẨU USER GỐC, BẬT SUNSHINE & STARDESK CÙNG LÚC
+      # 8. CẤU HÌNH MẬT KHẨU USER GỐC (RUNNERADMIN), SỬA SETTINGS & BẬT SUNSHINE
       # ───────────────────────────────────────────────
-      - name: 👤 Đặt mật khẩu User gốc (runneradmin), Bật Sunshine & Khởi động StarDesk
+      - name: 👤 Đặt mật khẩu User gốc (runneradmin), Bảo vệ Settings & Bật Sunshine
         shell: pwsh
         env:
           RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
@@ -1382,6 +1244,7 @@ jobs:
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
           Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
 
+          # Đảm bảo quyền ALL APPLICATION PACKAGES (S-1-15-2-1) và đăng ký lại Windows Settings
           try {
               Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue;
               Start-Service -Name 'AppXSvc' -ErrorAction SilentlyContinue;
@@ -1404,7 +1267,41 @@ jobs:
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force;
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force;
 
-          # 1. Đồng bộ tài khoản Sunshine & bật dịch vụ Sunshine trên User gốc
+          # 🔑 Tái mã hóa khóa DPAPI (Local State) theo SID & Mật khẩu của máy mới để giữ phiên đăng nhập App/Trình duyệt
+          try {
+              Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue;
+              if (Test-Path "$profPath\AppData") {
+                  $rekeyCount = 0;
+                  Get-ChildItem -Path "$profPath\AppData" -Filter 'Local State.aistvkey' -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                      try {
+                          $keyFile = $_.FullName;
+                          $lsFile  = $keyFile -replace '\.aistvkey$', '';
+                          if (Test-Path "$lsFile") {
+                              $rawB64  = (Get-Content -Raw -Path "$keyFile" -Encoding ASCII).Trim();
+                              $rawKey  = [Convert]::FromBase64String("$rawB64");
+                              $newEnc  = [System.Security.Cryptography.ProtectedData]::Protect($rawKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser);
+                              $dpapiPrefix = [System.Text.Encoding]::ASCII.GetBytes('DPAPI');
+                              $finalBytes  = New-Object byte[] ($dpapiPrefix.Length + $newEnc.Length);
+                              [Array]::Copy($dpapiPrefix, 0, $finalBytes, 0, $dpapiPrefix.Length);
+                              [Array]::Copy($newEnc, 0, $finalBytes, $dpapiPrefix.Length, $newEnc.Length);
+
+                              $lsJson = Get-Content -Raw -Path "$lsFile" -Encoding UTF8 | ConvertFrom-Json;
+                              if ($lsJson.os_crypt) {
+                                  $lsJson.os_crypt.encrypted_key = [Convert]::ToBase64String($finalBytes);
+                                  if ($lsJson.os_crypt.PSObject.Properties['app_bound_encrypted_key']) {
+                                      $lsJson.os_crypt.PSObject.Properties.Remove('app_bound_encrypted_key');
+                                  }
+                                  $lsJson | ConvertTo-Json -Depth 32 -Compress | Set-Content -Path "$lsFile" -Encoding UTF8 -Force;
+                                  $rekeyCount++;
+                              }
+                          }
+                      } catch {}
+                  };
+                  Write-Host "│ ✅ Đã đồng bộ khóa phiên đăng nhập DPAPI cho $rekeyCount ứng dụng/trình duyệt!" -ForegroundColor Green;
+              }
+          } catch {}
+
+          # Đồng bộ tài khoản Sunshine & bật dịch vụ Sunshine trên User gốc
           $sunDir = 'C:\Program Files\Sunshine';
           $sunExe = "$sunDir\sunshine.exe";
           $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG";
@@ -1437,35 +1334,6 @@ jobs:
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
           }
 
-          # 2. Khởi động dịch vụ & Tiến trình StarDesk cùng lúc với Sunshine trên Console
-          $sdExe = "$env:STARDESK_EXE";
-          if (($sdExe) -and (Test-Path "$sdExe")) {
-              $sdDir = Split-Path -Parent "$sdExe";
-              & icacls "$sdDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-              & icacls "$env:STARDESK_PERSIST_CFG" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-
-              # Đăng ký lại Service của StarDesk / GameViewer nếu có file service đi kèm
-              $sdSvcFile = Get-ChildItem -Path "$sdDir" -Include '*Service*.exe', '*Daemon*.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
-              $sdSvcObj  = Get-Service -Name 'StarDesk*', 'GameViewer*' -ErrorAction SilentlyContinue | Select-Object -First 1;
-              if ((-not ($sdSvcObj)) -and ($sdSvcFile)) {
-                  & sc.exe create StarDeskService binPath= "`"$($sdSvcFile.FullName)`"" start= auto DisplayName= "StarDesk Remote Service" *> $null;
-                  $sdSvcObj = Get-Service -Name 'StarDeskService' -ErrorAction SilentlyContinue;
-              }
-              if ($sdSvcObj) {
-                  Set-Service -Name ($sdSvcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
-                  Start-Service -Name ($sdSvcObj.Name) -ErrorAction SilentlyContinue;
-              }
-
-              # Ghi khóa tự khởi động cùng Windows
-              Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'StarDesk' -Value "`"$sdExe`"" -Force -ErrorAction SilentlyContinue;
-              Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'StarDesk' -Value "`"$sdExe`"" -Force -ErrorAction SilentlyContinue;
-
-              # Khởi chạy trực tiếp tiến trình StarDesk trong phiên Console cùng Sunshine
-              Start-Process -FilePath "$sdExe" -WorkingDirectory "$sdDir";
-              Start-Sleep -Seconds 2;
-              Write-Host "│ ✅ Đã khởi động StarDesk song song cùng Sunshine (Giữ nguyên tài khoản đăng nhập)" -ForegroundColor Green;
-          }
-
           try {
               $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop');
               New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null;
@@ -1489,13 +1357,6 @@ jobs:
                   $lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/";
                   $lnk4.Save();
 
-                  if (($sdExe) -and (Test-Path "$sdExe")) {
-                      $lnk5 = $ws.CreateShortcut("$d\STARDESK-REMOTE.lnk");
-                      $lnk5.TargetPath = "$sdExe";
-                      $lnk5.WorkingDirectory = (Split-Path -Parent "$sdExe");
-                      $lnk5.Save();
-                  }
-
                   $tsconBat = "$d\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat";
                   $batLines = @(
                       '@echo off',
@@ -1503,7 +1364,7 @@ jobs:
                   );
                   Set-Content -Path "$tsconBat" -Value ($batLines -join "`r`n") -Encoding ASCII;
               };
-              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng, Sunshine & StarDesk trên Desktop" -ForegroundColor Green;
+              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng & Sunshine trên Desktop User gốc" -ForegroundColor Green;
           } catch {}
 
           'SESSION_READY=1' >> "$env:GITHUB_ENV";
@@ -1563,7 +1424,7 @@ jobs:
       # ───────────────────────────────────────────────
       # 10. KHỞI CHẠY WEB PANEL QUẢN LÝ & HIỂN THỊ KẾT NỐI
       # ───────────────────────────────────────────────
-      - name: 🌐 Khởi chạy Web Quản Lý RDP, Sunshine & StarDesk (Port 8080) & Ghi State
+      - name: 🌐 Khởi chạy Web Quản Lý RDP & Sunshine (Port 8080) & Ghi State
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
@@ -1615,7 +1476,6 @@ jobs:
               '        $h      = [math]::Floor(($remain) / 3600);',
               '        $m      = [math]::Floor((($remain) % 3600) / 60);',
               '        $s      = ($remain) % 60;',
-              '        $sdRunning = if (Get-Process -Name "StarDesk*", "GameViewer*" -ErrorAction SilentlyContinue) { "Đang chạy (Đã gắn kết lưu TK)" } else { "Chờ khởi động" };',
               '        $statusMsg = "";',
               '        if (($req.HttpMethod) -eq "POST") {',
               '            if ("$path" -eq "/action/save") {',
@@ -1647,13 +1507,12 @@ jobs:
               '            ".btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }",',
               '            ".note { font-size: 12px; color: #94a3b8; margin-top: 14px; }",',
               '            "</style></head><body><div class=''card''>",',
-              '            "<h1>🎛️ Bảng Điều Khiển AI-STV (RDP + Sunshine + StarDesk)</h1>",',
-              '            "<div class=''sub''>Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Sunshine, StarDesk, Tắt máy & Chuyển phiên</div>",',
+              '            "<h1>🎛️ Bảng Điều Khiển AI-STV (RDP + Sunshine)</h1>",',
+              '            "<div class=''sub''>Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Sunshine Stream, Tắt máy & Chuyển phiên</div>",',
               '            "$bannerHtml",',
               '            "<div class=''info''>",',
               '            "<div class=''row''><span>🌐 IP Tailscale:</span><span class=''val''>$($env:TAILSCALE_IP)</span></div>",',
               '            "<div class=''row''><span>☀️ Sunshine Web UI:</span><span class=''val''><a href=''https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/'' target=''_blank''>https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>",',
-              '            "<div class=''row''><span>🚀 StarDesk Remote:</span><span class=''val''>$sdRunning</span></div>",',
               '            "<div class=''row''><span>👤 Tài khoản gốc:</span><span class=''val''>$($env:RDP_USER)</span></div>",',
               '            "<div class=''row''><span>🔊 Âm thanh ảo:</span><span class=''val''>$($env:AUDIO_DEVICE_NAME)</span></div>",',
               '            "<div class=''row''><span>💽 Ổ đĩa lưu trữ:</span><span class=''val''>$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>",',
@@ -1662,7 +1521,7 @@ jobs:
               '            "<form method=''POST'' action=''/action/save''><button type=''submit'' class=''btn-save''><span>💾 Lưu Dữ Liệu Ngay (Không tắt máy)</span><span>→</span></button></form>",',
               '            "<form method=''POST'' action=''/action/restart''><button type=''submit'' class=''btn-restart''><span>🔁 Lưu Ổ Đĩa & Khởi Động Phiên Mới Ngay</span><span>→</span></button></form>",',
               '            "<form method=''POST'' action=''/action/stop''><button type=''submit'' class=''btn-stop''><span>🛑 Lưu Ổ Đĩa & Tắt Hẳn Server</span><span>→</span></button></form>",',
-              '            "<div class=''note''>💡 Luôn tắt hoặc khởi động lại bằng nút trên trang web này để lưu 100% ổ đĩa và tài khoản StarDesk lên Release.</div></div></body></html>"',
+              '            "<div class=''note''>💡 Luôn tắt hoặc khởi động lại bằng nút trên trang web này để lưu 100% ổ đĩa lên Release.</div></div></body></html>"',
               '        );',
               '        $html = $htmlLines -join "`r`n";',
               '        $buf = [System.Text.Encoding]::UTF8.GetBytes("$html");',
@@ -1679,7 +1538,7 @@ jobs:
           Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green;
           exit 0;
 
-      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + STARDESK + MÀN HÌNH ẢO + ÂM THANH ẢO)
+      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + MÀN HÌNH ẢO + ÂM THANH ẢO)
         shell: pwsh
         run: |
           $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
@@ -1693,11 +1552,10 @@ jobs:
 
           Write-Host "";
           Write-Host "┌──────────────────────────────────────────────────────────┐" -ForegroundColor Cyan;
-          Write-Host "│    🎉 RDP + SUNSHINE + STARDESK + Ổ ĐĨA GITHUB SẴN SÀNG! │" -ForegroundColor Cyan;
+          Write-Host "│         🎉 RDP + SUNSHINE + Ổ ĐĨA GITHUB SẴN SÀNG!       │" -ForegroundColor Cyan;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
           Write-Host "│ 🌐  IP Tailscale  : $env:TAILSCALE_IP (RDP: 3389 | Moonlight)" -ForegroundColor White;
           Write-Host "│ ☀️  Sunshine Web  : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
-          Write-Host "│ 🚀  StarDesk      : Tự khởi động cùng Sunshine & Lưu đăng nhập" -ForegroundColor Yellow;
           Write-Host "│ 🎛️  Web Quản Lý   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
           if ("$env:DUCKDNS_HOST") {
               Write-Host "│ 🦆  Tên miền      : $env:DUCKDNS_HOST" -ForegroundColor White;
@@ -1707,14 +1565,18 @@ jobs:
           Write-Host "│ 🖥️  Màn hình ảo   : ${{ inputs.vdd_resolution }} (Trực tiếp trên Console)" -ForegroundColor Green;
           Write-Host "│ 🔊  Âm thanh ảo   : $env:AUDIO_DEVICE_NAME" -ForegroundColor Green;
           Write-Host "│ 💽  Ổ đĩa riêng   : $($env:MOUNT_LETTER):\ ($env:SHARED_ROOT)" -ForegroundColor Green;
+          Write-Host "│ 👤  Profile gốc   : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green;
           Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
+          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
+          Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow;
+          Write-Host "│ 💡 Ghép nối Moonlight được lưu sẵn vào ổ $($env:MOUNT_LETTER):\, phiên sau tự nhận!" -ForegroundColor Yellow;
           Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan;
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 11. DUY TRÌ PHIÊN & GIỮ TIẾN TRÌNH SUNSHINE + STARDESK LUÔN SỐNG
+      # 11. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
       # ───────────────────────────────────────────────
-      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (GIỮ SUNSHINE + STARDESK + AUDIO)
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE/AUDIO)
         id: keepalive
         shell: pwsh
         run: |
@@ -1734,7 +1596,7 @@ jobs:
           Write-Host "";
 
           $lastLog = (Get-Date).AddHours(-1);
-          $warned  = $false;
+          $warned  =$false;
 
           while ($true) {
               if (Test-Path "$sigFile") {
@@ -1760,51 +1622,29 @@ jobs:
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
                       if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
-                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';
-                          $sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
+                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
                               & tscon "$sidNum" /dest:console *> $null;
-                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine & StarDesk!" -ForegroundColor Green;
+                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine!" -ForegroundColor Green;
                           }
                       }
                   };
               } catch {}
 
-              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
-              $remain = ($endEpoch) - ($now);
+              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();$remain = ($endEpoch) - ($now);
               if (($remain) -le 0) {
                   Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow;
                   break;
-              }
-
-              # Tự động giữ tiến trình StarDesk luôn chạy cùng Sunshine
-              $sdProc = Get-Process -Name 'StarDesk*', 'GameViewer*' -ErrorAction SilentlyContinue;
-              if (-not ($sdProc)) {
-                  $sdExePath = "$env:STARDESK_EXE";
-                  if ((-not ($sdExePath)) -or (-not (Test-Path "$sdExePath"))) {
-                      $foundSd = Get-ChildItem -Path 'C:\Program Files', 'C:\Program Files (x86)', "$env:LOCALAPPDATA" -Include 'StarDesk.exe', 'GameViewer.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1;
-                      if ($foundSd) {
-                          $sdExePath = $foundSd.FullName;
-                          $env:STARDESK_EXE = "$sdExePath";
-                      }
-                  }
-                  if (($sdExePath) -and (Test-Path "$sdExePath")) {
-                      $sdSvc = Get-Service -Name 'StarDesk*', 'GameViewer*' -ErrorAction SilentlyContinue | Select-Object -First 1;
-                      if (($sdSvc) -and (($sdSvc.Status) -ne 'Running')) {
-                          Start-Service -Name ($sdSvc.Name) -ErrorAction SilentlyContinue;
-                      }
-                      Start-Process -FilePath "$sdExePath" -WorkingDirectory (Split-Path -Parent "$sdExePath") -ErrorAction SilentlyContinue;
-                  }
               }
 
               if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {$svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
                   $audSvc  = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
                   $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
                   $sunSvc  = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-                  $sunStat = if (($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'))) { 'Running' } else { 'Stopped' };$sdStat  = if (Get-Process -Name 'StarDesk*', 'GameViewer*' -ErrorAction SilentlyContinue) { 'Running' } else { 'NotInstalled/Stopped' };
+                  $sunStat = if (($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'))) { 'Running' } else { 'Stopped' };
                   $h = [math]::Floor(($remain) / 3600);
                   $m = [math]::Floor((($remain) % 3600) / 60);
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine: $sunStat | StarDesk:$sdStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine:$sunStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
                   $lastLog = Get-Date;
               }
 
@@ -1813,6 +1653,7 @@ jobs:
                   Start-Service -Name TermService -ErrorAction SilentlyContinue;
               }
 
+              # Tự động giữ dịch vụ Windows Audio luôn bật
               $audSvc = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
               if (($audSvc) -and (($audSvc.Status) -ne 'Running')) {
                   Start-Service -Name AudioEndpointBuilder -ErrorAction SilentlyContinue;
@@ -1828,7 +1669,7 @@ jobs:
 
               if ((-not ($warned)) -and (($remain) -le 300)) {
                   try {
-                      msg * /TIME:290 "Phien RDP/Sunshine/StarDesk sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
+                      msg * /TIME:290 "Phien RDP/Sunshine sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
                   $warned =$true;
               }
@@ -1853,10 +1694,8 @@ jobs:
               exit 0;
           }
 
-          # Dừng nhẹ Sunshine & StarDesk trước khi đóng gói cuối phiên để tránh khóa file DB đăng nhập
-          Stop-Service -Name 'SunshineService', 'sunshinesvc', 'StarDesk*', 'GameViewer*' -Force -ErrorAction SilentlyContinue;
-          Stop-Process -Name 'sunshine', 'StarDesk*', 'GameViewer*' -Force -ErrorAction SilentlyContinue;
-          Start-Sleep -Seconds 2;
+          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
+          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
 
           & "$saveScript" -Reason 'session-end';
           $global:LASTEXITCODE = 0;
@@ -1886,8 +1725,7 @@ jobs:
               Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
               Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue;
               Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue;
-              Remove-NetFirewallRule -DisplayName 'StarDesk-Direct-P2P' -ErrorAction SilentlyContinue;
-              Write-Host "│ ✅ Xóa rule firewall" -ErrorAction SilentlyContinue -ForegroundColor Green;
+              Write-Host "│ ✅ Xóa rule firewall" -ForegroundColor Green;
           } catch {}
 
           try {
@@ -1910,7 +1748,6 @@ jobs:
           WIN_IMAGE: ${{ inputs.windows_image }}
           FIXED_PASS: ${{ inputs.fixed_password }}
           VDD_RES: ${{ inputs.vdd_resolution }}
-          SD_URL: ${{ inputs.stardesk_download_url }}
           PKGS: ${{ inputs.choco_packages }}
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
@@ -1920,7 +1757,7 @@ jobs:
           $ddnsStr = ("$env:DDNS").ToLower();
 
           Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan;
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "stardesk_download_url=$env:SD_URL" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
           if (($LASTEXITCODE) -ne 0) {
               throw 'Không kích hoạt được phiên mới';
           }
