@@ -218,13 +218,18 @@ jobs:
               '    Write-Host "ℹ️ Chưa thấy ổ đĩa chung, bỏ qua";',
               '    exit 0;',
               '}',
-              'Write-Host "💾 [$Reason] Đang đóng an toàn các trình duyệt & ứng dụng để nhả khóa file Cookie/Session..." -ForegroundColor Cyan;',
-              '$appsToClose = @("chrome", "msedge", "brave", "firefox", "coccoc", "opera", "vivaldi", "discord", "Telegram", "Zalo", "steam", "EpicGamesLauncher", "Spotify", "Code", "Notion");',
+              'Write-Host "💾 [$Reason] Đang đóng an toàn các trình duyệt & ứng dụng (bao gồm StarDesk) để nhả khóa file Cookie/Session..." -ForegroundColor Cyan;',
+              '$appsToClose = @("chrome", "msedge", "brave", "firefox", "coccoc", "opera", "vivaldi", "discord", "Telegram", "Zalo", "steam", "EpicGamesLauncher", "Spotify", "Code", "Notion", "StarDesk");',
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object {',
               '    $null = $_.CloseMainWindow();',
               '};',
               'Start-Sleep -Seconds 3;',
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;',
+              'if ("$Reason" -eq "session-end") {',
+              '    Get-Service -Name "*StarDesk*" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;',
+              '    Get-Process -Name "StarDesk*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;',
+              '    & taskkill.exe /F /IM "StarDesk*" /T *> $null;',
+              '}',
               'Start-Sleep -Seconds 2;',
               '',
               'Write-Host "🔑 [$Reason] Đang giải mã khóa DPAPI (Local State) để di chuyển phiên đăng nhập sang máy mới..." -ForegroundColor Cyan;',
@@ -1422,7 +1427,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 10. KHỞI CHẠY WEB PANEL QUẢN LÝ & HIỂN THỊ KẾT NỐI
+      # 10. KHỞI CHẠY WEB PANEL QUẢN LÝ & CÀI LẠI / MỞ STARDESK
       # ───────────────────────────────────────────────
       - name: 🌐 Khởi chạy Web Quản Lý RDP & Sunshine (Port 8080) & Ghi State
         shell: pwsh
@@ -1538,7 +1543,97 @@ jobs:
           Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green;
           exit 0;
 
-      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + MÀN HÌNH ẢO + ÂM THANH ẢO)
+      # ───────────────────────────────────────────────
+      # 10.5. CÀI ĐẶT LẠI & MỞ STARDESK (SAU KHI HỆ THỐNG ĐÃ MỞ SẴN SÀNG)
+      # ───────────────────────────────────────────────
+      - name: 🚀 Cài đặt lại & Mở StarDesk (Sau khi mọi thứ đã cài xong và máy đã mở)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue';
+          $user          = "$env:RDP_USER";
+          $installerPath = 'C:\Users\runneradmin\Downloads\StarDesk_1.5.2.exe';
+          $appDir        = 'C:\Program Files\StarDesk';
+          $appExe        = 'C:\Program Files\StarDesk\StarDesk.exe';
+
+          Write-Host "";
+          Write-Host "🚀 ĐANG CÀI ĐẶT LẠI & KHỞI CHẠY STARDESK (GIỮ NGUYÊN DỮ LIỆU ĐÃ LƯU)..." -ForegroundColor Yellow;
+
+          if (-not (Test-Path "$installerPath")) {
+              $altInstaller = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads', 'StarDesk_1.5.2.exe');
+              if (Test-Path "$altInstaller") {
+                  $installerPath = "$altInstaller";
+              }
+          }
+
+          if (Test-Path "$installerPath") {
+              Write-Host "│ 📦 Tìm thấy bộ cài: $installerPath. Đang tiến hành cài đặt lại..." -ForegroundColor Cyan;
+
+              # Tắt các tiến trình/service StarDesk cũ (nếu đang khóa file từ bản khôi phục) trước khi chạy bộ cài
+              Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
+              Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
+
+              # Chạy bộ cài ở chế độ Silent (/S) với cơ chế chống treo tối đa 60 giây
+              $sdInstallJob = Start-Job -ScriptBlock {
+                  param($exe)
+                  Start-Process -FilePath "$exe" -ArgumentList '/S' -Wait;
+              } -ArgumentList "$installerPath";
+
+              $doneInstall = Wait-Job -Job ($sdInstallJob) -Timeout 60;
+              if (-not ($doneInstall)) {
+                  Write-Host "│ ⚠️  Bộ cài chạy quá 60s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
+                  Stop-Job -Job ($sdInstallJob) -ErrorAction SilentlyContinue;
+                  Get-Process -Name 'StarDesk_1.5.2*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              }
+              Remove-Job -Job ($sdInstallJob) -Force -ErrorAction SilentlyContinue;
+
+              # Nếu file chạy hoặc service chưa được đăng ký bởi cờ /S, kích hoạt trực tiếp bộ cài không tham số (timeout 45s)
+              if ((-not (Test-Path "$appExe")) -and (-not (Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue))) {
+                  Write-Host "│ 🔄 Chạy trực tiếp bộ cài $installerPath..." -ForegroundColor Cyan;
+                  $proc = Start-Process -FilePath "$installerPath" -PassThru -ErrorAction SilentlyContinue;
+                  $waited = 0;
+                  while (($waited -lt 45) -and (-not (Test-Path "$appExe"))) {
+                      Start-Sleep -Seconds 2;
+                      $waited += 2;
+                  }
+                  Start-Sleep -Seconds 3;
+                  if (($proc) -and (-not ($proc.HasExited))) {
+                      Stop-Process -Id ($proc.Id) -Force -ErrorAction SilentlyContinue;
+                  }
+              }
+              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt StarDesk_1.5.2.exe" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ⚠️  Không tìm thấy file cài đặt tại $installerPath (sẽ thử mở trực tiếp nếu đã có sẵn)" -ForegroundColor Yellow;
+          }
+
+          # Đảm bảo tất cả Service của StarDesk được bật
+          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
+              Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Đã bật dịch vụ $($_.Name)" -ForegroundColor Green;
+          };
+
+          # Mở ứng dụng C:\Program Files\StarDesk\StarDesk.exe trên phiên Console của máy
+          if (Test-Path "$appExe") {
+              try {
+                  & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null;
+                  & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
+                  Start-Sleep -Seconds 3;
+              } catch {}
+
+              if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                  Start-Process -FilePath "$appExe" -WorkingDirectory "$appDir";
+                  Start-Sleep -Seconds 2;
+              }
+              "STARDESK_READY=1" >> "$env:GITHUB_ENV";
+              Write-Host "│ ✅ Đã mở ứng dụng StarDesk thành công: $appExe" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ❌ Không tìm thấy $appExe sau khi chạy cài đặt!" -ForegroundColor Red;
+          }
+          $global:LASTEXITCODE = 0;
+          exit 0;
+
+      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + STARDESK + MÀN HÌNH ẢO + ÂM THANH ẢO)
         shell: pwsh
         run: |
           $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
@@ -1550,13 +1645,16 @@ jobs:
               $passText = '(dùng secret RDP_PASSWORD)';
           }
 
+          $sdStatus = if (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue) { 'Đang chạy (Đã cài & mở sẵn)' } else { 'Chờ khởi tạo / Chưa có bộ cài' };
+
           Write-Host "";
           Write-Host "┌──────────────────────────────────────────────────────────┐" -ForegroundColor Cyan;
-          Write-Host "│         🎉 RDP + SUNSHINE + Ổ ĐĨA GITHUB SẴN SÀNG!       │" -ForegroundColor Cyan;
+          Write-Host "│     🎉 RDP + SUNSHINE + STARDESK + Ổ ĐĨA SẴN SÀNG!       │" -ForegroundColor Cyan;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
           Write-Host "│ 🌐  IP Tailscale  : $env:TAILSCALE_IP (RDP: 3389 | Moonlight)" -ForegroundColor White;
           Write-Host "│ ☀️  Sunshine Web  : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "│ 🎛️  Web Quản Lý   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "│ 🚀  StarDesk      : $sdStatus" -ForegroundColor Green;
           if ("$env:DUCKDNS_HOST") {
               Write-Host "│ 🦆  Tên miền      : $env:DUCKDNS_HOST" -ForegroundColor White;
           }
@@ -1569,14 +1667,14 @@ jobs:
           Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
           Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow;
-          Write-Host "│ 💡 Ghép nối Moonlight được lưu sẵn vào ổ $($env:MOUNT_LETTER):\, phiên sau tự nhận!" -ForegroundColor Yellow;
+          Write-Host "│ 💡 Ghép nối Moonlight & dữ liệu StarDesk được lưu sẵn vào ổ $($env:MOUNT_LETTER):\!" -ForegroundColor Yellow;
           Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan;
           exit 0;
 
       # ───────────────────────────────────────────────
       # 11. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
       # ───────────────────────────────────────────────
-      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE/AUDIO)
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE/STARDESK/AUDIO)
         id: keepalive
         shell: pwsh
         run: |
@@ -1586,6 +1684,7 @@ jobs:
           $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           $sigFile    = "$env:CONTROL_SIGNAL_FILE";
           $u          = "$env:RDP_USER";
+          $sdExe      = 'C:\Program Files\StarDesk\StarDesk.exe';
 
           Write-Host "";
           Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow;
@@ -1596,7 +1695,7 @@ jobs:
           Write-Host "";
 
           $lastLog = (Get-Date).AddHours(-1);
-          $warned  =$false;
+          $warned  = $false;
 
           while ($true) {
               if (Test-Path "$sigFile") {
@@ -1606,6 +1705,16 @@ jobs:
                   if ("$cmd" -eq 'SAVE_NOW') {
                       Write-Host "💾 [WEB-PANEL] Nhận lệnh LƯU NGAY từ Web Quản Lý..." -ForegroundColor Cyan;
                       & "$saveScript" -Reason 'manual-web-save';
+                      if (Test-Path "$sdExe") {
+                          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Start-Service -ErrorAction SilentlyContinue;
+                          if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                              & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
+                              Start-Sleep -Seconds 2;
+                              if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                                  Start-Process -FilePath "$sdExe" -WorkingDirectory 'C:\Program Files\StarDesk';
+                              }
+                          }
+                      }
                       $global:LASTEXITCODE = 0;
                   } elseif ("$cmd" -eq 'RESTART_SESSION') {
                       Write-Host "🔁 [WEB-PANEL] Nhận lệnh LƯU & KHỞI ĐỘNG LẠI PHIÊN MỚI từ Web Quản Lý!" -ForegroundColor Yellow;
@@ -1622,29 +1731,34 @@ jobs:
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
                       if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
-                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
+                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';
+                          $sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
                               & tscon "$sidNum" /dest:console *> $null;
-                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine!" -ForegroundColor Green;
+                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine & StarDesk!" -ForegroundColor Green;
                           }
                       }
                   };
               } catch {}
 
-              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();$remain = ($endEpoch) - ($now);
+              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
+              $remain = ($endEpoch) - ($now);
               if (($remain) -le 0) {
                   Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow;
                   break;
               }
 
-              if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {$svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+              if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {
+                  $svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
                   $audSvc  = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
                   $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
                   $sunSvc  = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
                   $sunStat = if (($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'))) { 'Running' } else { 'Stopped' };
+                  $sdProc  = Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue;
+                  $sdStat  = if ($sdProc) { 'Running' } else { 'Stopped' };
                   $h = [math]::Floor(($remain) / 3600);
                   $m = [math]::Floor((($remain) % 3600) / 60);
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine:$sunStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine: $sunStat | StarDesk: $sdStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
                   $lastLog = Get-Date;
               }
 
@@ -1667,9 +1781,19 @@ jobs:
                   }
               }
 
+              # Tự động giữ StarDesk luôn bật trong suốt phiên làm việc
+              if ((Test-Path "$sdExe") -and (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue))) {
+                  Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Start-Service -ErrorAction SilentlyContinue;
+                  & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
+                  Start-Sleep -Seconds 1;
+                  if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                      Start-Process -FilePath "$sdExe" -WorkingDirectory 'C:\Program Files\StarDesk' -ErrorAction SilentlyContinue;
+                  }
+              }
+
               if ((-not ($warned)) -and (($remain) -le 300)) {
                   try {
-                      msg * /TIME:290 "Phien RDP/Sunshine sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
+                      msg * /TIME:290 "Phien RDP/Sunshine/StarDesk sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
                   $warned =$true;
               }
@@ -1678,24 +1802,38 @@ jobs:
           }
 
           Write-Host "";
-          Write-Host "🎯 CHUYỂN SANG BƯỚC ĐÓNG GÓI & LƯU DỮ LIỆU AN TOÀN..." -ForegroundColor Green;
+          Write-Host "🎯 CHUYỂN SANG BƯỚC TẮT TIẾN TRÌNH & ĐÓNG GÓI LƯU DỮ LIỆU AN TOÀN..." -ForegroundColor Green;
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 12. LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
+      # 12. TẮT SUNSHINE / STARDESK & LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
       # ───────────────────────────────────────────────
-      - name: 💾 Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
+      - name: 💾 Tắt Sunshine, Kill StarDesk & Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
         if: always()
         shell: pwsh
         run: |
+          Write-Host "🛑 Đang tắt Sunshine & Kill toàn bộ tiến trình StarDesk cuối phiên..." -ForegroundColor Yellow;
+
+          # Tắt Sunshine
+          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
+          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
+
+          # Tắt & Kill toàn bộ StarDesk (cả App, Tiến trình con & Service)
+          & schtasks.exe /Delete /TN "AISTV-Launch-StarDesk" /F *> $null;
+          Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
+              $null =$_.CloseMainWindow();
+          };
+          Start-Sleep -Seconds 2;
+          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
+          Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+          & taskkill.exe /F /IM 'StarDesk*' /T *> $null;
+          Write-Host "✅ Đã tắt hoàn toàn StarDesk & Sunshine!" -ForegroundColor Green;
+
           $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           if (-not (Test-Path "$saveScript")) {
               Write-Host 'ℹ️ Không có script lưu, bỏ qua' -ForegroundColor Cyan;
               exit 0;
           }
-
-          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
-          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
 
           & "$saveScript" -Reason 'session-end';
           $global:LASTEXITCODE = 0;
@@ -1710,6 +1848,13 @@ jobs:
         run: |
           Write-Host "";
           Write-Host "🧹 ĐANG DỌN DẸP HỆ THỐNG..." -ForegroundColor Yellow;
+
+          try {
+              Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
+              Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              & taskkill.exe /F /IM 'StarDesk*' /T *> $null;
+              Write-Host "│ ✅ Đã đóng triệt để tiến trình StarDesk" -ForegroundColor Green;
+          } catch {}
 
           $ts = "$env:ProgramFiles\Tailscale\tailscale.exe";
 
