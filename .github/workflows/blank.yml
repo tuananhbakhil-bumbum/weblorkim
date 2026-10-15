@@ -199,7 +199,7 @@ jobs:
           Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $user ($profPath)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
-      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB (ĐÃ FIX LỖI ROBOCOPY)
+      # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
       # ───────────────────────────────────────────────
       - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
         shell: pwsh
@@ -218,17 +218,17 @@ jobs:
               '    Write-Host "ℹ️ Chưa thấy ổ đĩa chung, bỏ qua";',
               '    exit 0;',
               '}',
-              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, Sunshine, Profile gốc & App..." -ForegroundColor Cyan;',
+              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, Display, Audio, Sunshine, Profile gốc & App..." -ForegroundColor Cyan;',
               '$regBk = [System.IO.Path]::Combine("$osDir", "Registry");',
               'New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;',
-              '# --- LƯU ĐỘ PHÂN GIẢI, TỶ LỆ SCALE (DPI) & CẤU HÌNH MÀN HÌNH ---',
+              '# Sao lưu Độ phân giải, Tỷ lệ Scale (DPI) & Cấu hình màn hình',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null;',
-              '# --- LƯU HÌNH NỀN, TỶ LỆ THU PHÓNG USER, THEME, DARK MODE ---',
+              '# Sao lưu Hình nền, Tỷ lệ thu phóng User, Theme, Dark Mode & Âm thanh',
               'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null;',
               'reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null;',
               'reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null;',
@@ -236,7 +236,8 @@ jobs:
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null;',
-              '# --- XUẤT TOÀN BỘ DRIVER BÊN THỨ 3 (ÂM THANH, MÀN HÌNH...) ---',
+              'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null;',
+              '# Sao lưu các gói Driver bên thứ 3 (VB-Audio, VDD...)',
               '$drvBk = [System.IO.Path]::Combine("$osDir", "Drivers-Backup");',
               'New-Item -ItemType Directory -Force -Path "$drvBk" | Out-Null;',
               'pnputil /export-driver * "$drvBk" *> $null;',
@@ -245,7 +246,6 @@ jobs:
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
               '    $profDst = [System.IO.Path]::Combine("$root", "Users", "$u");',
               '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null;',
-              '    # Lớp 1: Đồng bộ trực tiếp các thư mục cá nhân quan trọng (Downloads, Desktop, Documents, Pictures, Videos, Music, AppData\Roaming...)',
               '    $priorityFolders = @("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music", "Favorites", "Links", "Saved Games", "Contacts", "Searches", "AppData\Roaming", "AppData\LocalLow");',
               '    foreach ($pf in $priorityFolders) {',
               '        $sDir = [System.IO.Path]::Combine("$profSrc", "$pf");',
@@ -255,7 +255,6 @@ jobs:
               '            robocopy "$sDir" "$dDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* *> $null;',
               '        }',
               '    }',
-              '    # Lớp 2: Đồng bộ toàn bộ thư mục gốc của User & AppData\Local (TUYỆT ĐỐI KHÔNG DÙNG KÝ TỰ * TRONG /XD)',
               '    $excludeDirs = @(',
               '        "$profSrc\AppData\Local\Temp",',
               '        "$profSrc\AppData\Local\Packages",',
@@ -287,23 +286,7 @@ jobs:
               '    );',
               '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat /XD @excludeDirs *> $null;',
               '    $global:LASTEXITCODE = 0;',
-              '    $dlStats = Get-ChildItem -Path "$profDst\Downloads" -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;',
-              '    $allStats = Get-ChildItem -Path "$profDst" -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;',
-              '    $dlMB = [math]::Round((($dlStats.Sum) / 1MB), 2);',
-              '    $allMB = [math]::Round((($allStats.Sum) / 1MB), 2);',
-              '    Write-Host "📊 [$Reason] Đã gom Profile [$u]: Tổng $($allStats.Count) file ($allMB MB) | Riêng Downloads: $($dlStats.Count) file ($dlMB MB)" -ForegroundColor Green;',
               '}',
-              '# Đồng bộ thêm C:\Users\Public (Downloads, Desktop, Documents)',
-              '$pubDst = [System.IO.Path]::Combine("$osDir", "Public-Profile");',
-              '@("Downloads", "Desktop", "Documents") | ForEach-Object {',
-              '    $ps = "C:\Users\Public\$_";',
-              '    $pd = "$pubDst\$_";',
-              '    if (Test-Path "$ps") {',
-              '        New-Item -ItemType Directory -Force -Path "$pd" | Out-Null;',
-              '        robocopy "$ps" "$pd" /MIR /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;',
-              '    }',
-              '};',
-              '$global:LASTEXITCODE = 0;',
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {',
               '    try {',
               '        $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json;',
@@ -509,35 +492,23 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
 
-          # Khôi phục C:\Users\Public (Downloads, Desktop, Documents)
-          $pubSrc = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Public-Profile');
-          if (Test-Path "$pubSrc") {
-              robocopy "$pubSrc" 'C:\Users\Public' /E /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null;
-              $global:LASTEXITCODE = 0;
-          }
-
-          # Quét toàn bộ các thư mục User đã lưu trong Users\* (kể cả AISTV-D cũ lẫn runneradmin) để gộp về User gốc
-          $savedUserDirs = @(Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Sort-Object { $_.Name -eq "$env:RDP_USER" });
-          if (($savedUserDirs.Count) -gt 0) {
-              foreach ($uDir in $savedUserDirs) {
-                  $srcProf = $uDir.FullName;
-                  $skipRestoreDirs = @(
-                      "$srcProf\AppData\Local\Packages",
-                      "$srcProf\AppData\Local\TileDataLayer",
-                      "$srcProf\AppData\Local\ConnectedDevicesPlatform",
-                      "$srcProf\AppData\Local\Microsoft\Windows\Explorer"
-                  );
-                  robocopy "$srcProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs *> $null;
-                  $global:LASTEXITCODE = 0;
-                  if (($uDir.Name) -ne "$env:RDP_USER") {
-                      $targetMainProf = [System.IO.Path]::Combine("$env:PROFILE_ROOT", "$env:RDP_USER");
-                      New-Item -ItemType Directory -Force -Path "$targetMainProf" | Out-Null;
-                      robocopy "$srcProf" "$targetMainProf" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null;
-                      Remove-Item -Path "$srcProf" -Recurse -Force -ErrorAction SilentlyContinue;
-                  }
+          $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER");
+          if (-not (Test-Path "$oldProf")) {
+              $fallbackProf = Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1;
+              if ($fallbackProf) {
+                  $oldProf = $fallbackProf.FullName;
               }
-              $dlRestored = @(Get-ChildItem -Path "$env:PROFILE_PATH\Downloads" -Recurse -File -Force -ErrorAction SilentlyContinue).Count;
-              Write-Host "✅ Đã nạp thẳng dữ liệu Profile vào User gốc ($env:PROFILE_PATH) | Downloads có: $dlRestored file" -ForegroundColor Green;
+          }
+          if (Test-Path "$oldProf") {
+              $skipRestoreDirs = @(
+                  "$oldProf\AppData\Local\Packages",
+                  "$oldProf\AppData\Local\TileDataLayer",
+                  "$oldProf\AppData\Local\ConnectedDevicesPlatform",
+                  "$oldProf\AppData\Local\Microsoft\Windows\Explorer"
+              );
+              robocopy "$oldProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* /XD @skipRestoreDirs *> $null;
+              $global:LASTEXITCODE = 0;
+              Write-Host "✅ Đã nạp thẳng dữ liệu Profile cũ vào User gốc ($env:PROFILE_PATH)" -ForegroundColor Green;
           } else {
               Write-Host "ℹ️ Chưa có bản lưu Profile trong ổ ${dl}:\" -ForegroundColor Yellow;
           }
@@ -556,7 +527,7 @@ jobs:
           if (Test-Path "$drvBk") {
               pnputil /add-driver "$drvBk\*.inf" /subdirs /install *> $null;
               $global:LASTEXITCODE = 0;
-              Write-Host "✅ Đã nạp lại Driver âm thanh & thiết bị từ bản sao lưu" -ForegroundColor Green;
+              Write-Host "✅ Đã nạp lại các gói Driver đã lưu vào DriverStore" -ForegroundColor Green;
           }
 
           if (Test-Path "$env:SHARED_STATE_FILE") {
@@ -626,10 +597,12 @@ jobs:
               @{Name = "Bật Remote Desktop"; Script = {
                   Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force;
               }},
-              @{Name = "Cấu hình bảo mật RDP"; Script = {
+              @{Name = "Cấu hình bảo mật RDP & Mở khóa truyền Âm thanh"; Script = {
                   $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp';
                   Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Force;
                   Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Force;
+                  Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force;
+                  Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force;
               }},
               @{Name = "Mở port RDP (3389), Web (8080) & Sunshine (47984-48010) cho Tailscale"; Script = {
                   Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
@@ -737,63 +710,33 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH VB-AUDIO & SUNSHINE
+      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO ĐA TẦNG & SUNSHINE
       # ───────────────────────────────────────────────
-      - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Sunshine
+      - name: 🖥️🔊☀️ Cài Màn Hình Ảo (VDD), Âm Thanh Ảo Tự Động (VB-Audio + Fallback) & Sunshine
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
-          $ErrorActionPreference = 'Continue';$ProgressPreference    = 'SilentlyContinue';
+          $ErrorActionPreference = 'Continue';
+          $ProgressPreference    = 'SilentlyContinue';
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
 
           Write-Host "";
-          Write-Host "🔊  0. KÍCH HOẠT WINDOWS AUDIO & DRIVER VB-AUDIO VIRTUAL CABLE..." -ForegroundColor Yellow;
-          try {
-              Set-Service -Name 'AudioEndpointBuilder' -StartupType Automatic -ErrorAction SilentlyContinue;
-              Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue;
-              Set-Service -Name 'Audiosrv' -StartupType Automatic -ErrorAction SilentlyContinue;
-              Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue;
-
-              $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable');
-              $vbZip      = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip');
-              New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null;
-
-              if (-not (Test-Path "$vbZip")) {
-                  Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45;
-              }
-              if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) {
-                  Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force;
-              }
-
-              $hasVbAudio = Get-PnpDevice -Class 'MEDIA' -ErrorAction SilentlyContinue \vert{} Where-Object {$_.FriendlyName -match 'VB-Audio|CABLE' };
-              if ((-not ($hasVbAudio)) -and (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe")) {
-                  Get-ChildItem -Path "$vbCacheDir" -Filter '*.cer' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
-                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
-                  };
-                  pnputil /add-driver "$vbCacheDir\vbMmeCable64_win7.inf" /install *> $null;
-                  Start-Process -FilePath "$vbCacheDir\VBCABLE_Setup_x64.exe" -ArgumentList '-i', '-h' -WorkingDirectory "$vbCacheDir" -Wait;
-              }
-              Write-Host "│ ✅ Đã bật Windows Audio & nạp Driver âm thanh VB-Audio Virtual Cable" -ForegroundColor Green;
-          } catch {
-              Write-Host "│ ⚠️  VB-Audio lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
-          }
-
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
 
           $resParts = "$env:VDD_RES" -split '[@x]';
           $vWidth   = if (($resParts.Count) -ge 1) { [int]$resParts[0] } else { 1920 };
-          $vHeight  = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 };$vHz      = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 };
+          $vHeight  = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 };
+          $vHz      = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 };
 
           $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD');
           New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null;
+          $usbDir = 'C:\usbmmidd_v2';
 
           try {
               $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip');
-              $usbDir = 'C:\usbmmidd_v2';
               if (-not (Test-Path "$usbZip")) {
                   Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45;
               }
@@ -803,7 +746,9 @@ jobs:
                       Push-Location "$usbDir";
                       Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object {
                           Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null; }; & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *>$null;
+                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
+                      };
+                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null;
 
                       $wudfPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters';
                       New-Item -Path "$wudfPath" -Force | Out-Null;
@@ -856,7 +801,7 @@ jobs:
                               '}'
                           );
                           Add-Type -TypeDefinition ($csLines -join "`r`n") -ErrorAction SilentlyContinue;
-                          [DisplaySetter]::SetRes($vWidth, $vHeight,$vHz);
+                          [DisplaySetter]::SetRes($vWidth, $vHeight, $vHz);
                           Write-Host "│ ✅ Đã cài và áp dụng màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
                       }
                   }
@@ -865,7 +810,131 @@ jobs:
               Write-Host "│ ⚠️  USBMMIDD_v2 lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
 
-          Write-Host "☀️  2. ĐANG TẢI & CÀI ĐẶT SUNSHINE..." -ForegroundColor Yellow;
+          Write-Host "";
+          Write-Host "🔊  2. TỰ ĐỘNG CÀI ĐẶT & BẬT CARD ÂM THANH ẢO (VB-AUDIO + DỰ PHÒNG ĐA TẦNG)..." -ForegroundColor Yellow;
+          try {
+              # Bước 2.1: Bật toàn bộ dịch vụ âm thanh gốc của Windows Server
+              @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object {
+                  Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue;
+                  Start-Service -Name "$_" -ErrorAction SilentlyContinue;
+              };
+
+              $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable');
+              $vbZip      = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip');
+              New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null;
+
+              if (-not (Test-Path "$vbZip")) {
+                  try {
+                      Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45;
+                  } catch {
+                      Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45;
+                  }
+              }
+              if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) {
+                  Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force;
+              }
+
+              # Nạp chứng chỉ số từ cả file .cer lẫn chữ ký Authenticode trong file .cat/.sys/.exe để Windows không chặn Driver
+              Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                  if ($_.Extension -eq '.cer') {
+                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
+                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
+                  } else {
+                      $sig = Get-AuthenticodeSignature -FilePath ($_.FullName) -ErrorAction SilentlyContinue;
+                      if ($sig -and $sig.SignerCertificate) {
+                          $storeRoot = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine');
+                          $storeRoot.Open('ReadWrite');
+                          $storeRoot.Add($sig.SignerCertificate);
+                          $storeRoot.Close();
+                          $storePub = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine');
+                          $storePub.Open('ReadWrite');
+                          $storePub.Add($sig.SignerCertificate);
+                          $storePub.Close();
+                      }
+                  }
+              };
+
+              # Tầng 1: Nạp INF + Ép tạo thiết bị phần cứng ảo VBAudioVACWDM bằng deviceinstaller64 + VBCABLE_Setup_x64
+              $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
+              if (-not ($vbInf)) {
+                  $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
+              }
+              if ($vbInf) {
+                  pnputil /add-driver ($vbInf.FullName) /install *> $null;
+                  if (Test-Path "$usbDir\deviceinstaller64.exe") {
+                      Push-Location ($vbInf.DirectoryName);
+                      & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null;
+                      Pop-Location;
+                  }
+              }
+
+              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              if ((-not ($audioDev)) -and (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe")) {
+                  $vbJob = Start-Job -ScriptBlock {
+                      param($dir)
+                      Start-Process -FilePath "$dir\VBCABLE_Setup_x64.exe" -ArgumentList '-i', '-h' -WorkingDirectory "$dir" -Wait;
+                  } -ArgumentList "$vbCacheDir";
+                  $doneVb = Wait-Job -Job ($vbJob) -Timeout 20;
+                  if (-not ($doneVb)) {
+                      Stop-Job -Job ($vbJob) -ErrorAction SilentlyContinue;
+                      Get-Process -Name 'VBCABLE*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  }
+                  Remove-Job -Job ($vbJob) -Force -ErrorAction SilentlyContinue;
+              }
+
+              # Tầng 2 (Dự phòng): Nếu chưa lên thiết bị âm thanh, tự động cài vb-cable qua Chocolatey
+              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              if (-not ($audioDev)) {
+                  Write-Host "│ 🔄 Chuyển sang Tầng 2: Cài đặt gói vb-cable tự động qua Chocolatey..." -ForegroundColor Cyan;
+                  $chocoVbJob = Start-Job -ScriptBlock {
+                      choco install vb-cable -y --no-progress --limit-output --ignore-checksums;
+                  };
+                  $doneChocoVb = Wait-Job -Job ($chocoVbJob) -Timeout 45;
+                  if (-not ($doneChocoVb)) {
+                      Stop-Job -Job ($chocoVbJob) -ErrorAction SilentlyContinue;
+                      Get-Process -Name 'VBCABLE*','choco' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  }
+                  Remove-Job -Job ($chocoVbJob) -Force -ErrorAction SilentlyContinue;
+              }
+
+              # Tầng 3 (Dự phòng): Tìm & cài thêm Virtual Audio Cable (VAC) nếu vẫn chưa có thiết bị MEDIA
+              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              if (-not ($audioDev)) {
+                  Write-Host "│ 🔄 Chuyển sang Tầng 3: Cài đặt Virtual Audio Cable dự phòng..." -ForegroundColor Cyan;
+                  $vacJob = Start-Job -ScriptBlock {
+                      choco install virtual-audio-cable -y --no-progress --limit-output --ignore-checksums;
+                  };
+                  $doneVac = Wait-Job -Job ($vacJob) -Timeout 45;
+                  if (-not ($doneVac)) {
+                      Stop-Job -Job ($vacJob) -ErrorAction SilentlyContinue;
+                  }
+                  Remove-Job -Job ($vacJob) -Force -ErrorAction SilentlyContinue;
+              }
+
+              # Quét lại thiết bị PnP, bật toàn bộ thiết bị âm thanh và khởi động lại Audiosrv
+              pnputil /scan-devices *> $null;
+              Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'OK' } | ForEach-Object {
+                  Enable-PnpDevice -InstanceId ($_.InstanceId) -Confirm:($false) -ErrorAction SilentlyContinue *> $null;
+              };
+              Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
+
+              $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique);
+              if (($finalAudio.Count) -gt 0) {
+                  $audioNames = $finalAudio -join ', ';
+                  "AUDIO_DEVICE_NAME=$audioNames" >> "$env:GITHUB_ENV";
+                  Write-Host "│ ✅ Đã cài đặt & bật thành công thiết bị âm thanh ảo: $audioNames" -ForegroundColor Green;
+              } else {
+                  "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV";
+                  Write-Host "│ ✅ Đã bật dịch vụ Windows Audio & nạp Driver âm thanh ảo" -ForegroundColor Green;
+              }
+          } catch {
+              Write-Host "│ ⚠️  Âm thanh ảo lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+          $global:LASTEXITCODE = 0;
+
+          Write-Host "";
+          Write-Host "☀️  3. ĐANG TẢI & CÀI ĐẶT SUNSHINE..." -ForegroundColor Yellow;
 
           $sunDir = 'C:\Program Files\Sunshine';
           $sunExe = "$sunDir\sunshine.exe";
@@ -889,7 +958,7 @@ jobs:
               if (-not ($completed)) {
                   Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
                   Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue;
-                  Get-Process | Where-Object { ($_.Name -match 'sunshine\vert{}choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
               } else {
                   Receive-Job -Job ($installJob) | Out-Null;
               }
@@ -940,6 +1009,7 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
           exit 0;
+
       # ───────────────────────────────────────────────
       # 7. TAILSCALE
       # ───────────────────────────────────────────────
@@ -1337,6 +1407,7 @@ jobs:
               '            "<div class=''row''><span>🌐 IP Tailscale:</span><span class=''val''>$($env:TAILSCALE_IP)</span></div>",',
               '            "<div class=''row''><span>☀️ Sunshine Web UI:</span><span class=''val''><a href=''https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/'' target=''_blank''>https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>",',
               '            "<div class=''row''><span>👤 Tài khoản gốc:</span><span class=''val''>$($env:RDP_USER)</span></div>",',
+              '            "<div class=''row''><span>🔊 Âm thanh ảo:</span><span class=''val''>$($env:AUDIO_DEVICE_NAME)</span></div>",',
               '            "<div class=''row''><span>💽 Ổ đĩa lưu trữ:</span><span class=''val''>$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>",',
               '            "<div class=''row''><span>⏳ Thời gian còn lại:</span><span class=''val''>${h}h ${m}m ${s}s</span></div>",',
               '            "</div>",',
@@ -1360,7 +1431,7 @@ jobs:
           Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green;
           exit 0;
 
-      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + MÀN HÌNH ẢO)
+      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + MÀN HÌNH ẢO + ÂM THANH ẢO)
         shell: pwsh
         run: |
           $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
@@ -1385,6 +1456,7 @@ jobs:
           Write-Host "│ 👤  User gốc      : $env:RDP_USER (Dùng chung cho cả RDP & Sunshine)" -ForegroundColor Green;
           Write-Host "│ 🔐  Mật khẩu      : $passText (Cố định)" -ForegroundColor Green;
           Write-Host "│ 🖥️  Màn hình ảo   : ${{ inputs.vdd_resolution }} (Trực tiếp trên Console)" -ForegroundColor Green;
+          Write-Host "│ 🔊  Âm thanh ảo   : $env:AUDIO_DEVICE_NAME" -ForegroundColor Green;
           Write-Host "│ 💽  Ổ đĩa riêng   : $($env:MOUNT_LETTER):\ ($env:SHARED_ROOT)" -ForegroundColor Green;
           Write-Host "│ 👤  Profile gốc   : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green;
           Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
@@ -1397,7 +1469,7 @@ jobs:
       # ───────────────────────────────────────────────
       # 11. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
       # ───────────────────────────────────────────────
-      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE)
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE/AUDIO)
         id: keepalive
         shell: pwsh
         run: |
@@ -1417,7 +1489,7 @@ jobs:
           Write-Host "";
 
           $lastLog = (Get-Date).AddHours(-1);
-          $warned  =$false;
+          $warned  = $false;
 
           while ($true) {
               if (Test-Path "$sigFile") {
@@ -1459,18 +1531,26 @@ jobs:
               }
 
               if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {$svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+                  $audSvc  = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
                   $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
                   $sunSvc  = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
                   $sunStat = if (($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'))) { 'Running' } else { 'Stopped' };
                   $h = [math]::Floor(($remain) / 3600);
                   $m = [math]::Floor((($remain) % 3600) / 60);
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine:$sunStat | Còn lại: ${h}h${m}m | Web: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Blue;
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 RDP: $($svc.Status) | Sunshine:$sunStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
                   $lastLog = Get-Date;
               }
 
               $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue;
               if (($svc) -and (($svc.Status) -ne 'Running')) {
                   Start-Service -Name TermService -ErrorAction SilentlyContinue;
+              }
+
+              # Tự động giữ dịch vụ Windows Audio luôn bật
+              $audSvc = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
+              if (($audSvc) -and (($audSvc.Status) -ne 'Running')) {
+                  Start-Service -Name AudioEndpointBuilder -ErrorAction SilentlyContinue;
+                  Start-Service -Name Audiosrv -ErrorAction SilentlyContinue;
               }
 
               if (-not (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue)) {
