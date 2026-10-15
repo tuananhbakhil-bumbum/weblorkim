@@ -224,6 +224,22 @@ jobs:
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;',
+              '# --- LƯU ĐỘ PHÂN GIẢI, TỶ LỆ SCALE (DPI) & CẤU HÌNH MÀN HÌNH ---',
+              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null;',
+              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null;',
+              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null;',
+              '# --- LƯU HÌNH NỀN, TỶ LỆ THU PHÓNG USER, THEME, DARK MODE ---',
+              'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null;',
+              'reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null;',
+              'reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null;',
+              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes" "$regBk\User-Themes.reg" /y *> $null;',
+              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null;',
+              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null;',
+              'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null;',
+              '# --- XUẤT TOÀN BỘ DRIVER BÊN THỨ 3 (ÂM THANH, MÀN HÌNH...) ---',
+              '$drvBk = [System.IO.Path]::Combine("$osDir", "Drivers-Backup");',
+              'New-Item -ItemType Directory -Force -Path "$drvBk" | Out-Null;',
+              'pnputil /export-driver * "$drvBk" *> $null;',
               '$u = "$env:RDP_USER";',
               '$profSrc = "$env:PROFILE_PATH";',
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
@@ -529,10 +545,18 @@ jobs:
 
           $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry');
           if (Test-Path "$regBk") {
-              Get-ChildItem -Path "$regBk" -Filter '*.reg' | Where-Object { $_.Name -notlike 'User-*' } | ForEach-Object {
+              Get-ChildItem -Path "$regBk" -Filter '*.reg' | ForEach-Object {
                   reg import ($_.FullName) *>$null;
               };
-              Write-Host "✅ Đã nạp lại Registry hệ thống & biến môi trường từ ổ riêng" -ForegroundColor Green;
+              & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True;
+              Write-Host "✅ Đã nạp lại Registry hệ thống, Hình nền, Tỷ lệ Scale & Cài đặt Windows" -ForegroundColor Green;
+          }
+
+          $drvBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Drivers-Backup');
+          if (Test-Path "$drvBk") {
+              pnputil /add-driver "$drvBk\*.inf" /subdirs /install *> $null;
+              $global:LASTEXITCODE = 0;
+              Write-Host "✅ Đã nạp lại Driver âm thanh & thiết bị từ bản sao lưu" -ForegroundColor Green;
           }
 
           if (Test-Path "$env:SHARED_STATE_FILE") {
@@ -713,26 +737,56 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD) & BỘ CÀI SUNSHINE
+      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH VB-AUDIO & SUNSHINE
       # ───────────────────────────────────────────────
       - name: 🖥️☀️ Cài Driver Màn Hình Ảo (VDD) & Sunshine
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
-          $ErrorActionPreference = 'Continue';
-          $ProgressPreference    = 'SilentlyContinue';
+          $ErrorActionPreference = 'Continue';$ProgressPreference    = 'SilentlyContinue';
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
 
           Write-Host "";
+          Write-Host "🔊  0. KÍCH HOẠT WINDOWS AUDIO & DRIVER VB-AUDIO VIRTUAL CABLE..." -ForegroundColor Yellow;
+          try {
+              Set-Service -Name 'AudioEndpointBuilder' -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue;
+              Set-Service -Name 'Audiosrv' -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue;
+
+              $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable');
+              $vbZip      = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip');
+              New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null;
+
+              if (-not (Test-Path "$vbZip")) {
+                  Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45;
+              }
+              if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) {
+                  Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force;
+              }
+
+              $hasVbAudio = Get-PnpDevice -Class 'MEDIA' -ErrorAction SilentlyContinue \vert{} Where-Object {$_.FriendlyName -match 'VB-Audio|CABLE' };
+              if ((-not ($hasVbAudio)) -and (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe")) {
+                  Get-ChildItem -Path "$vbCacheDir" -Filter '*.cer' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
+                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
+                  };
+                  pnputil /add-driver "$vbCacheDir\vbMmeCable64_win7.inf" /install *> $null;
+                  Start-Process -FilePath "$vbCacheDir\VBCABLE_Setup_x64.exe" -ArgumentList '-i', '-h' -WorkingDirectory "$vbCacheDir" -Wait;
+              }
+              Write-Host "│ ✅ Đã bật Windows Audio & nạp Driver âm thanh VB-Audio Virtual Cable" -ForegroundColor Green;
+          } catch {
+              Write-Host "│ ⚠️  VB-Audio lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
 
           $resParts = "$env:VDD_RES" -split '[@x]';
-          $vWidth   = if (($resParts.Count) -ge 1) { $resParts[0] } else { '1920' };
-          $vHeight  = if (($resParts.Count) -ge 2) { $resParts[1] } else { '1080' };
-          $vHz      = if (($resParts.Count) -ge 3) { $resParts[2] } else { '60' };
+          $vWidth   = if (($resParts.Count) -ge 1) { [int]$resParts[0] } else { 1920 };
+          $vHeight  = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 };$vHz      = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 };
 
           $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD');
           New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null;
@@ -749,12 +803,62 @@ jobs:
                       Push-Location "$usbDir";
                       Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object {
                           Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null;
-                      };
-                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null;
+                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null; }; & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *>$null;
+
+                      $wudfPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters';
+                      New-Item -Path "$wudfPath" -Force | Out-Null;
+                      Set-ItemProperty -Path "$wudfPath" -Name '0' -Value '1920,1080,60' -Type String -Force;
+                      Set-ItemProperty -Path "$wudfPath" -Name '1' -Value '1920,1080,120' -Type String -Force;
+                      Set-ItemProperty -Path "$wudfPath" -Name '2' -Value '2560,1440,60' -Type String -Force;
+                      Set-ItemProperty -Path "$wudfPath" -Name '3' -Value '3840,2160,60' -Type String -Force;
+
                       & .\deviceinstaller64.exe enableidd 1 *> $null;
                       Pop-Location;
-                      Write-Host "│ ✅ Đã cài và bật màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
+                      Start-Sleep -Seconds 2;
+
+                      $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry');
+                      if (Test-Path "$regBk\Display-Config.reg") {
+                          reg import "$regBk\Display-Config.reg" *>$null;
+                          reg import "$regBk\Display-Conn.reg" *>$null;
+                          reg import "$regBk\Display-Scale.reg" *>$null;
+                          Write-Host "│ ✅ Đã khôi phục độ phân giải & tỷ lệ Scale đã lưu từ phiên trước" -ForegroundColor Green;
+                      } else {
+                          $csLines = @(
+                              'using System;',
+                              'using System.Runtime.InteropServices;',
+                              'public class DisplaySetter {',
+                              '    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]',
+                              '    public struct DEVMODE {',
+                              '        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;',
+                              '        public short dmSpecVersion; public short dmDriverVersion; public short dmSize; public short dmDriverExtra;',
+                              '        public int dmFields; public int dmPositionX; public int dmPositionY; public int dmDisplayOrientation;',
+                              '        public int dmDisplayFixedOutput; public short dmColor; public short dmDuplex; public short dmYResolution;',
+                              '        public short dmTTOption; public short dmCollate;',
+                              '        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;',
+                              '        public short dmLogPixels; public int dmBitsPerPel; public int dmPelsWidth; public int dmPelsHeight;',
+                              '        public int dmDisplayFlags; public int dmDisplayFrequency;',
+                              '        public int dmICMMethod; public int dmICMIntent; public int dmMediaType; public int dmDitherType;',
+                              '        public int dmReserved1; public int dmReserved2; public int dmPanningWidth; public int dmPanningHeight;',
+                              '    }',
+                              '    [DllImport("user32.dll", CharSet = CharSet.Ansi)]',
+                              '    public static extern int EnumDisplaySettings(string lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);',
+                              '    [DllImport("user32.dll", CharSet = CharSet.Ansi)]',
+                              '    public static extern int ChangeDisplaySettings(ref DEVMODE lpDevMode, int dwFlags);',
+                              '    public static void SetRes(int w, int h, int hz) {',
+                              '        DEVMODE dm = new DEVMODE();',
+                              '        dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));',
+                              '        if (EnumDisplaySettings(null, -1, ref dm) != 0) {',
+                              '            dm.dmPelsWidth = w; dm.dmPelsHeight = h; dm.dmDisplayFrequency = hz;',
+                              '            dm.dmFields = 0x00080000 | 0x00100000 | 0x00400000;',
+                              '            ChangeDisplaySettings(ref dm, 0x01);',
+                              '        }',
+                              '    }',
+                              '}'
+                          );
+                          Add-Type -TypeDefinition ($csLines -join "`r`n") -ErrorAction SilentlyContinue;
+                          [DisplaySetter]::SetRes($vWidth, $vHeight,$vHz);
+                          Write-Host "│ ✅ Đã cài và áp dụng màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
+                      }
                   }
               }
           } catch {
@@ -785,7 +889,7 @@ jobs:
               if (-not ($completed)) {
                   Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
                   Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue;
-                  Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  Get-Process | Where-Object { ($_.Name -match 'sunshine\vert{}choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
               } else {
                   Receive-Job -Job ($installJob) | Out-Null;
               }
@@ -836,7 +940,6 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
           exit 0;
-
       # ───────────────────────────────────────────────
       # 7. TAILSCALE
       # ───────────────────────────────────────────────
