@@ -1,0 +1,134 @@
+# ───────────────────────────────────────────────
+      # 10. CÀI ĐẶT LẠI & MỞ STARDESK (SAU KHI HỆ THỐNG ĐÃ MỞ SẴN SÀNG)
+      # ───────────────────────────────────────────────
+      - name: 🚀 Cài đặt lại & Mở StarDesk (Sau khi mọi thứ đã cài xong và máy đã mở)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue';$ProgressPreference    = 'SilentlyContinue';
+          $user                  = "$env:RDP_USER";
+          $downloadUrl           = 'https://download943.mediafire.com/be95vz5kgnig_m7acKGr-mRjXQQKAN0i2WdjIR_d-q70MeLboolFJnUHit6ZmqJYm8_rJigOgY0P5NhtdANnLGXOaEmKg9eWSEUGCEEIZdCrV2NNZ0ubdEO1hyPHR6l2Re85XT5kJpCd3Q4GXpeU0ZD2QSr5gc_6aPfM7r15_YltcA/mf82krdrzcy3dz8/StarDesk_1.5.3.exe';
+          $appDir                = 'C:\Program Files\StarDesk';$appExe                = 'C:\Program Files\StarDesk\StarDesk.exe';
+
+          Write-Host "";
+          Write-Host "🚀 ĐANG KIỂM TRA, CÀI ĐẶT & KHỞI CHẠY STARDESK (GIỮ NGUYÊN DỮ LIỆU ĐÃ LƯU)..." -ForegroundColor Yellow;
+
+          # Hàm kiểm tra file bộ cài StarDesk có chưa, nếu chưa có thì tải về
+          function Ensure-StarDeskInstaller {
+              param([string]$Url)
+
+              $dlDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads');
+              New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null;
+
+              $targetFile = [System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.3.exe');
+              $cacheFile  = if ("$env:INSTALLER_CACHE") { [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'StarDesk_1.5.3.exe') } else { $null };
+
+              # Danh sách các đường dẫn có thể đã tồn tại từ phiên trước
+              $checkPaths = @(
+                  "$targetFile",
+                  "$cacheFile",
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.3.exe',
+                  ([System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.2.exe')),
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.2.exe'
+              ) | Where-Object { $_ };
+
+              foreach ($p in$checkPaths) {
+                  if ((Test-Path "$p") -and ((Get-Item "$p").Length -gt 1MB)) {
+                      Write-Host "│ ✅ Đã tìm thấy bộ cài StarDesk có sẵn: $p" -ForegroundColor Green;
+                      if (("$p" -ne "$targetFile") -and (-not (Test-Path "$targetFile"))) {
+                          Copy-Item -Path "$p" -Destination "$targetFile" -Force -ErrorAction SilentlyContinue;
+                      }
+                      return "$p";
+                  }
+              }
+
+              Write-Host "│ ⬇️  Chưa có bộ cài StarDesk. Đang tải StarDesk_1.5.3.exe từ MediaFire..." -ForegroundColor Cyan;
+              try {
+                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
+                  & curl.exe -L --retry 3 --connect-timeout 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$Url" -o "$targetFile" 2>$null;
+
+                  if ((-not (Test-Path "$targetFile")) -or ((Get-Item "$targetFile").Length -lt 1MB)) {
+                      Invoke-WebRequest -Uri "$Url" -OutFile "$targetFile" -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 120;
+                  }
+              } catch {
+                  Write-Host "│ ⚠️  Lỗi khi tải bộ cài: $($_.Exception.Message)" -ForegroundColor Yellow;
+              }
+
+              if ((Test-Path "$targetFile") -and ((Get-Item "$targetFile").Length -gt 1MB)) {
+                  Write-Host "│ ✅ Đã tải thành công bộ cài: $targetFile ($([math]::Round((Get-Item "$targetFile").Length / 1MB, 2)) MB)" -ForegroundColor Green;
+                  if ($cacheFile) {
+                      Copy-Item -Path "$targetFile" -Destination "$cacheFile" -Force -ErrorAction SilentlyContinue;
+                  }
+                  return "$targetFile";
+              } else {
+                  if (Test-Path "$targetFile") {
+                      Remove-Item -Path "$targetFile" -Force -ErrorAction SilentlyContinue;
+                  }
+                  Write-Host "│ ❌ Tải file cài đặt thất bại hoặc link MediaFire đã hết hạn/đổi token!" -ForegroundColor Red;
+                  return $null;
+              }
+          }
+
+          $installerPath = Ensure-StarDeskInstaller -Url "$downloadUrl";
+
+          if (($installerPath) -and (Test-Path "$installerPath")) {
+              Write-Host "│ 📦 Đang tiến hành cài đặt từ: $installerPath..." -ForegroundColor Cyan;
+
+              Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
+              Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
+
+              $sdInstallJob = Start-Job -ScriptBlock {
+                  param($exe)
+                  Start-Process -FilePath "$exe" -ArgumentList '/S' -Wait;
+              } -ArgumentList "$installerPath";
+
+              $doneInstall = Wait-Job -Job ($sdInstallJob) -Timeout 60;
+              if (-not ($doneInstall)) {
+                  Write-Host "│ ⚠️  Bộ cài chạy quá 60s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
+                  Stop-Job -Job ($sdInstallJob) -ErrorAction SilentlyContinue;
+                  Get-Process -Name 'StarDesk_1.5.*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              }
+              Remove-Job -Job ($sdInstallJob) -Force -ErrorAction SilentlyContinue;
+
+              if ((-not (Test-Path "$appExe")) -and (-not (Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue))) {
+                  Write-Host "│ 🔄 Chạy trực tiếp bộ cài $installerPath..." -ForegroundColor Cyan;
+                  $proc = Start-Process -FilePath "$installerPath" -PassThru -ErrorAction SilentlyContinue;
+                  $waited = 0;
+                  while (($waited -lt 45) -and (-not (Test-Path "$appExe"))) {
+                      Start-Sleep -Seconds 2;
+                      $waited += 2;
+                  }
+                  Start-Sleep -Seconds 3;
+                  if (($proc) -and (-not ($proc.HasExited))) {
+                      Stop-Process -Id ($proc.Id) -Force -ErrorAction SilentlyContinue;
+                  }
+              }
+              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt ($([System.IO.Path]::GetFileName("$installerPath")))" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ⚠️  Không tìm thấy file cài đặt hợp lệ (sẽ thử mở trực tiếp nếu đã có sẵn trong ổ C)" -ForegroundColor Yellow;
+          }
+
+          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
+              Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
+              Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Đã bật dịch vụ $($_.Name)" -ForegroundColor Green;
+          };
+
+          if (Test-Path "$appExe") {
+              try {
+                  & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null;
+                  & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
+                  Start-Sleep -Seconds 3;
+              } catch {}
+
+              if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                  Start-Process -FilePath "$appExe" -WorkingDirectory "$appDir";
+                  Start-Sleep -Seconds 2;
+              }
+              "STARDESK_READY=1" >> "$env:GITHUB_ENV";
+              Write-Host "│ ✅ Đã mở ứng dụng StarDesk thành công: $appExe" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ❌ Không tìm thấy $appExe sau khi chạy cài đặt!" -ForegroundColor Red;
+          }
+          $global:LASTEXITCODE = 0;
+          exit 0;
