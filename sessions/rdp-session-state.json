@@ -1,0 +1,16 @@
+{
+  "machineId": "maycua-dona",
+  "releaseTag": "aistv-storage-maycua-dona",
+  "user": "runneradmin",
+  "sid": "S-1-5-21-3213014087-2684668049-2838998412-500",
+  "password": null,
+  "passwordSource": "secret",
+  "windowsImage": "windows-2022",
+  "osBuild": "20348",
+  "driveLetter": "X",
+  "tailscaleIp": "100.93.234.86",
+  "durationMinutes": 300,
+  "startUtc": "2026-10-16T13:28:05.5577958Z",
+  "runId": "38907789250",
+  "lastUpdatedUtc": "2026-10-16T18:26:54.5816800Z"
+}
