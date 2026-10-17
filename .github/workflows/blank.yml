@@ -1632,7 +1632,70 @@ jobs:
           }
           $global:LASTEXITCODE = 0;
           exit 0;
+      - name: 🎥 Cài đặt lại & Mở Bandicam
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue';
+          $user          = "$env:RDP_USER";
+          $installerPath = 'C:\Users\runneradmin\Downloads\bdcamsetup-2025.exe';
+          $appDir        = 'C:\Program Files\Bandicam';$appExe        = 'C:\Program Files\Bandicam\bdcam.exe';
 
+          Write-Host "";
+          Write-Host "🎥 ĐANG CÀI ĐẶT LẠI & KHỞI CHẠY BANDICAM..." -ForegroundColor Yellow;
+
+          if (-not (Test-Path "$installerPath")) {
+              $altInstaller = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads', 'bdcamsetup-2025.exe');
+              if (Test-Path "$altInstaller") {
+                  $installerPath = "$altInstaller";
+              }
+          }
+
+          if (Test-Path "$installerPath") {
+              Write-Host "│ 📦 Tìm thấy bộ cài: $installerPath. Đang tiến hành cài đặt..." -ForegroundColor Cyan;
+
+              Get-Process -Name 'bdcam*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              Start-Sleep -Seconds 2;
+
+              $bdInstallJob = Start-Job -ScriptBlock {
+                  param($exe)
+                  Start-Process -FilePath "$exe" -ArgumentList '/S' -Wait;
+              } -ArgumentList "$installerPath";
+
+              $doneInstall = Wait-Job -Job ($bdInstallJob) -Timeout 60;
+              if (-not ($doneInstall)) {
+                  Write-Host "│ ⚠️  Bộ cài chạy quá 60s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
+                  Stop-Job -Job ($bdInstallJob) -ErrorAction SilentlyContinue;
+                  Get-Process -Name 'bdcamsetup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+              }
+              Remove-Job -Job ($bdInstallJob) -Force -ErrorAction SilentlyContinue;
+
+              if (Test-Path 'C:\Program Files (x86)\Bandicam\bdcam.exe') {
+                  $appDir = 'C:\Program Files (x86)\Bandicam';$appExe = 'C:\Program Files (x86)\Bandicam\bdcam.exe';
+              }
+
+              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt bdcamsetup-2025.exe" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ⚠️  Không tìm thấy file cài đặt tại $installerPath (sẽ thử mở trực tiếp nếu đã có sẵn)" -ForegroundColor Yellow;
+          }
+
+          if (Test-Path "$appExe") {
+              try {
+                  & schtasks.exe /Create /TN "AISTV-Launch-Bandicam" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null;
+                  & schtasks.exe /Run /TN "AISTV-Launch-Bandicam" *> $null;
+                  Start-Sleep -Seconds 3;
+              } catch {}
+
+              if (-not (Get-Process -Name 'bdcam*' -ErrorAction SilentlyContinue)) {
+                  Start-Process -FilePath "$appExe" -WorkingDirectory "$appDir";
+                  Start-Sleep -Seconds 2;
+              }
+              "BANDICAM_READY=1" >> "$env:GITHUB_ENV";
+              Write-Host "│ ✅ Đã mở ứng dụng Bandicam thành công: $appExe" -ForegroundColor Green;
+          } else {
+              Write-Host "│ ❌ Không tìm thấy $appExe sau khi chạy cài đặt!" -ForegroundColor Red;
+          }
+          $global:LASTEXITCODE = 0;
+          exit 0;
       - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + STARDESK + MÀN HÌNH ẢO + ÂM THANH ẢO)
         shell: pwsh
         run: |
