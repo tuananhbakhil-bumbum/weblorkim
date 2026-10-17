@@ -1,4 +1,4 @@
-name: máy của đạt
+name: maycuadat
 
 on:
   workflow_dispatch:
@@ -41,12 +41,12 @@ on:
           - 'windows-2022'
           - 'windows-2025'
       fixed_password:
-        description: '🔐 Mật khẩu cố định cho cả RDP (runneradmin) & Sunshine Web UI'
+        description: '🔐 Mật khẩu cố định cho RDP (runneradmin)'
         required: false
         default: 'Aistv@2026'
         type: string
       vdd_resolution:
-        description: '🖥️ Độ phân giải màn hình ảo mặc định cho Sunshine'
+        description: '🖥️ Độ phân giải màn hình ảo mặc định'
         required: false
         default: '1920x1080@60'
         type: choice
@@ -86,7 +86,6 @@ jobs:
       DRIVE_LETTER: ${{ inputs.drive_letter }}
       VHD_SIZE_GB: ${{ inputs.vhd_size_gb }}
       WEB_PORT: '8080'
-      SUNSHINE_WEB_PORT: '47990'
 
     steps:
       # ───────────────────────────────────────────────
@@ -198,6 +197,7 @@ jobs:
           "PROFILE_ROOT=$profileStoreRoot" >> "$env:GITHUB_ENV";
           "BASELINE_FILE=$baselineFile" >> "$env:GITHUB_ENV";
           "CONTROL_SIGNAL_FILE=$controlSignal" >> "$env:GITHUB_ENV";
+          "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV";
 
           $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild;
           "OS_BUILD=$build" >> "$env:GITHUB_ENV";
@@ -270,7 +270,7 @@ jobs:
               '    };',
               '}',
               '',
-              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, MachineGuid, Display, Audio, Sunshine, Profile gốc & App..." -ForegroundColor Cyan;',
+              'Write-Host "💾 [$Reason] Đang thu thập trạng thái Hệ Điều Hành, Registry, MachineGuid, Display, Audio, Profile gốc & App..." -ForegroundColor Cyan;',
               '$regBk = [System.IO.Path]::Combine("$osDir", "Registry");',
               'New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;',
@@ -646,10 +646,9 @@ jobs:
           $binDir     = [System.IO.Path]::Combine("$osDir", 'bin');
           $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache');
           $instCache  = [System.IO.Path]::Combine("$osDir", 'Installers');
-          $sunCfgDir  = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config');
           $dl         = "$env:MOUNT_LETTER";
 
-          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "$sunCfgDir", "${dl}:\Apps") | ForEach-Object {
+          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "${dl}:\Apps") | ForEach-Object {
               New-Item -ItemType Directory -Force -Path "$_" | Out-Null;
           };
 
@@ -664,23 +663,22 @@ jobs:
           }
 
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV";
-          "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV";
 
           Write-Host "";
-          Write-Host "🤖 AI STV PREMIUM RDP + SUNSHINE SERVER ($env:MACHINE_ID)" -ForegroundColor Yellow;
+          Write-Host "🤖 AI STV PREMIUM RDP + STARDESK SERVER ($env:MACHINE_ID)" -ForegroundColor Yellow;
           Write-Host "🏷️ Kho lưu trữ : $env:RELEASE_TAG (Nhánh: $env:STATE_BRANCH)" -ForegroundColor Cyan;
           Write-Host "🗂️ Ổ đĩa riêng : ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan;
           Write-Host "👤 User gốc    : $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan;
           Write-Host "🕒 Thời gian   : $env:DISPLAY_TIME" -ForegroundColor Magenta;
 
       # ───────────────────────────────────────────────
-      # 5. CẤU HÌNH RDP, MỞ PORT SUNSHINE / WEB & TỐI ƯU WINDOWS
+      # 5. CẤU HÌNH RDP, MỞ PORT WEB & TỐI ƯU WINDOWS
       # ───────────────────────────────────────────────
-      - name: 🔧 CẤU HÌNH HỆ THỐNG & FIREWALL (RDP + SUNSHINE + WEB)
+      - name: 🔧 CẤU HÌNH HỆ THỐNG & FIREWALL (RDP + WEB)
         shell: pwsh
         run: |
           Write-Host "";
-          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE & WEB PANEL" -ForegroundColor Yellow;
+          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP & WEB PANEL" -ForegroundColor Yellow;
 
           $stepsList = @(
               @{Name = "Bật Remote Desktop"; Script = {
@@ -693,14 +691,9 @@ jobs:
                   Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force;
                   Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force;
               }},
-              @{Name = "Mở port RDP (3389), Web (8080) & Sunshine (47984-48010) cho Tailscale"; Script = {
+              @{Name = "Mở port RDP (3389) & Web (8080)"; Script = {
                   Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
-                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue;
-                  Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue;
-
-                  New-NetFirewallRule -DisplayName 'RDP-Premium' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
-                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
-                  New-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null;
+                  New-NetFirewallRule -DisplayName 'RDP-Premium' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -Profile Any | Out-Null;
               }},
               @{Name = "Khởi động dịch vụ RDP"; Script = {
                   Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue;
@@ -799,9 +792,9 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO ĐA TẦNG & SUNSHINE
+      # 6. CÀI DRIVER MÀN HÌNH ẢO (VDD) & ÂM THANH ẢO ĐA TẦNG
       # ───────────────────────────────────────────────
-      - name: 🖥️🔊☀️ Cài Màn Hình Ảo (VDD), Âm Thanh Ảo Tự Động (VB-Audio + Fallback) & Sunshine
+      - name: 🖥️🔊 Cài Màn Hình Ảo (VDD) & Âm Thanh Ảo Tự Động (VB-Audio + Fallback)
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
@@ -809,8 +802,6 @@ jobs:
           $ErrorActionPreference = 'Continue';
           $ProgressPreference    = 'SilentlyContinue';
           $instCache             = "$env:INSTALLER_CACHE";
-          $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
-          $dl                    = "$env:MOUNT_LETTER";
 
           Write-Host "";
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
@@ -1015,189 +1006,12 @@ jobs:
               Write-Host "│ ⚠️  Âm thanh ảo lỗi nhẹ: $($_.Exception.Message)" -ForegroundColor Yellow;
           }
           $global:LASTEXITCODE = 0;
-
-          Write-Host "";
-          Write-Host "☀️  3. ĐANG TẢI & CÀI ĐẶT SUNSHINE..." -ForegroundColor Yellow;
-
-          $sunDir = 'C:\Program Files\Sunshine';
-          $sunExe = "$sunDir\sunshine.exe";
-          $sunCfg = "$sunDir\config";
-
-          if (-not (Test-Path "$sunExe")) {
-              Write-Host "│ 🧹 Xóa khóa Registry Sunshine cũ (nếu có) để chống treo bộ cài NSIS..." -ForegroundColor Cyan;
-              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue;
-              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue;
-              Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue;
-              & sc.exe stop SunshineService *> $null;
-              & sc.exe delete SunshineService *> $null;
-              & sc.exe stop sunshinesvc *> $null;
-              & sc.exe delete sunshinesvc *> $null;
-
-              Write-Host "│ 📦 Đang cài đặt Sunshine qua Chocolatey (khống chế tối đa 90s chống treo)..." -ForegroundColor Cyan;
-              $installJob = Start-Job -ScriptBlock {
-                  choco install sunshine -y --no-progress --limit-output --ignore-checksums;
-              };
-              $completed = Wait-Job -Job ($installJob) -Timeout 90;
-              if (-not ($completed)) {
-                  Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
-                  Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue;
-                  Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue;
-              } else {
-                  Receive-Job -Job ($installJob) | Out-Null;
-              }
-              Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue;
-              $global:LASTEXITCODE = 0;
-          } else {
-              Write-Host "│ ⚡ Đã khôi phục sẵn Sunshine từ ổ ${dl}:\ (Không cần tải hay cài lại)!" -ForegroundColor Green;
-          }
-
-          if (Test-Path "$sunExe") {
-              Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue;
-              Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
-              Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
-              Start-Sleep -Seconds 2;
-
-              if (Test-Path "$sunCfg") {
-                  $item = Get-Item "$sunCfg" -Force;
-                  if (($item.Attributes) -notmatch 'ReparsePoint') {
-                      if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) {
-                          Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue;
-                      }
-                      Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue;
-                      New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null;
-                  }
-              } else {
-                  New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null;
-              }
-              Write-Host "│ ✅ Đã gắn kết cấu hình Sunshine <-> $sunPersistCfg" -ForegroundColor Green;
-
-              $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf');
-              if (-not (Test-Path "$confFile")) {
-                  $defaultConf = @(
-                      "sunshine_name = AISTV-$($env:MACHINE_ID)",
-                      "min_log_level = info",
-                      "origin_web_ui_allowed = wan",
-                      "upnp = disabled",
-                      "address_family = both"
-                  ) -join "`r`n";
-                  Set-Content -Path "$confFile" -Value "$defaultConf" -Encoding UTF8;
-              } else {
-                  $curConf = Get-Content -Raw -Path "$confFile" -ErrorAction SilentlyContinue;
-                  if ("$curConf" -notmatch 'origin_web_ui_allowed') {
-                      Add-Content -Path "$confFile" -Value "`r`norigin_web_ui_allowed = wan" -Encoding UTF8;
-                  }
-              }
-          } else {
-              Write-Host "│ ❌ Không tìm thấy sunshine.exe sau khi cài!" -ForegroundColor Red;
-          }
-          $global:LASTEXITCODE = 0;
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 7. TAILSCALE (GIỮ NGUYÊN ĐỂ MỞ MÁY - ĐẶT HOSTNAME THEO MÁY PHỤ)
+      # 7. CẤU HÌNH MẬT KHẨU USER GỐC (RUNNERADMIN) & SỬA SETTINGS
       # ───────────────────────────────────────────────
-      - name: 🌐 THIẾT LẬP MẠNG TAILSCALE
-        env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-        shell: pwsh
-        run: |
-          Write-Host "";
-          Write-Host "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG TAILSCALE CHO MÁY [$env:MACHINE_ID]" -ForegroundColor Yellow;
-
-          if (-not ("$env:TAILSCALE_AUTH_KEY")) {
-              Write-Host "❌ Thiếu secret TAILSCALE_AUTH_KEY" -ForegroundColor Red;
-              exit 1;
-          }
-
-          $ProgressPreference = 'SilentlyContinue';
-          $ts = 'C:\Program Files\Tailscale\tailscale.exe';
-
-          if (-not (Test-Path "$ts")) {
-              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
-              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue;
-              Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
-              Start-Sleep -Seconds 2;
-
-              $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi');
-              if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) {
-                  Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue;
-              }
-              if (-not (Test-Path "$msiCache")) {
-                  try {
-                      Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing;
-                  } catch {}
-              }
-              if (Test-Path "$msiCache") {
-                  $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi');
-                  Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force;
-                  Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait;
-              }
-
-              if (-not (Test-Path "$ts")) {
-                  Write-Host "│ ⚠️  MSI chưa bung được file, chuyển sang bộ cài EXE trực tiếp..." -ForegroundColor Yellow;
-                  $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe');
-                  try {
-                      Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing;
-                      if (Test-Path "$exePath") {
-                          Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait;
-                      }
-                  } catch {}
-              }
-
-              if (-not (Test-Path "$ts")) {
-                  Write-Host "│ ⚠️  Đang cài Tailscale dự phòng qua Chocolatey..." -ForegroundColor Yellow;
-                  choco install tailscale -y --no-progress --limit-output --ignore-checksums;
-                  $global:LASTEXITCODE = 0;
-              }
-          }
-
-          if (-not (Test-Path "$ts")) {
-              Write-Host "❌ Không tìm thấy tailscale.exe sau cả 3 phương thức cài đặt!" -ForegroundColor Red;
-              exit 1;
-          }
-          Write-Host "│ ✅ Đã cài Tailscale ($ts)" -ForegroundColor Green;
-
-          Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue;
-          Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue;
-          Start-Sleep -Seconds 6;
-
-          $tsHost = "aistv-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)";
-          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended;
-          if (($LASTEXITCODE) -ne 0) {
-              Start-Sleep -Seconds 5;
-              & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset;
-              if (($LASTEXITCODE) -ne 0) {
-                  Write-Host "❌ Lỗi kết nối Tailscale (Hãy kiểm tra key đã bật Reusable chưa)" -ForegroundColor Red;
-                  exit 1;
-              }
-          }
-          Write-Host "│ ✅ Kết nối Tailscale thành công (Hostname: $tsHost)" -ForegroundColor Green;
-
-          $ip = $null;
-          1..20 | ForEach-Object {
-              if (-not ($ip)) {
-                  $out = (& "$ts" ip -4 2>&1 | Out-String).Trim();
-                  if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') {
-                      $ip = "$out";
-                  } else {
-                      Start-Sleep -Seconds 3;
-                  }
-              }
-          };
-
-          if (-not ($ip)) {
-              Write-Host "❌ Không lấy được IP Tailscale" -ForegroundColor Red;
-              exit 1;
-          }
-
-          "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV";
-          Write-Host "✅ Địa chỉ IP Tailscale của [$env:MACHINE_ID]: $ip" -ForegroundColor Green;
-          exit 0;
-
-      # ───────────────────────────────────────────────
-      # 8. CẤU HÌNH MẬT KHẨU USER GỐC (RUNNERADMIN), SỬA SETTINGS & BẬT SUNSHINE
-      # ───────────────────────────────────────────────
-      - name: 👤 Đặt mật khẩu User gốc (runneradmin), Bảo vệ Settings & Bật Sunshine
+      - name: 👤 Đặt mật khẩu User gốc (runneradmin) & Bảo vệ Settings
         shell: pwsh
         env:
           RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
@@ -1310,38 +1124,6 @@ jobs:
               }
           } catch {}
 
-          $sunDir = 'C:\Program Files\Sunshine';
-          $sunExe = "$sunDir\sunshine.exe";
-          $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG";
-          $userSid = (Get-LocalUser -Name "$user").SID.Value;
-
-          if (Test-Path "$sunExe") {
-              & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-              & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null;
-
-              Push-Location "$sunDir";
-              & "$sunExe" --creds "$user" "$matKhau" *> $null;
-              Pop-Location;
-              Write-Host "│ ✅ Đã đồng bộ tài khoản Sunshine Web UI -> User: $user | Pass: (Cố định)" -ForegroundColor Green;
-
-              $svcExe = "$sunDir\tools\sunshinesvc.exe";
-              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-              if ((-not ($svcObj)) -and (Test-Path "$svcExe")) {
-                  & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null;
-                  $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue;
-              }
-
-              if ($svcObj) {
-                  Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
-                  Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue;
-                  Write-Host "│ ✅ Đã bật dịch vụ $($svcObj.Name) (Running trên Console User gốc)" -ForegroundColor Green;
-              } else {
-                  Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden;
-                  Write-Host "│ ✅ Đã chạy trực tiếp Sunshine trong phiên Console của $user" -ForegroundColor Green;
-              }
-              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV";
-          }
-
           try {
               $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop');
               New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null;
@@ -1360,19 +1142,8 @@ jobs:
                   $lnk3 = $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url");
                   $lnk3.TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/";
                   $lnk3.Save();
-
-                  $lnk4 = $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url");
-                  $lnk4.TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/";
-                  $lnk4.Save();
-
-                  $tsconBat = "$d\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat";
-                  $batLines = @(
-                      '@echo off',
-                      'for /f "tokens=3-4" %%a in (''query session %USERNAME%'') do @if "%%b"=="Active" tscon %%a /dest:console'
-                  );
-                  Set-Content -Path "$tsconBat" -Value ($batLines -join "`r`n") -Encoding ASCII;
               };
-              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng & Sunshine trên Desktop User gốc" -ForegroundColor Green;
+              Write-Host "│ ✅ Đã tạo đầy đủ Shortcut ổ đĩa riêng & Web Quản Lý trên Desktop User gốc" -ForegroundColor Green;
           } catch {}
 
           'SESSION_READY=1' >> "$env:GITHUB_ENV";
@@ -1380,9 +1151,9 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 9. KHỞI CHẠY WEB PANEL QUẢN LÝ & CÀI LẠI / MỞ STARDESK
+      # 8. KHỞI CHẠY WEB PANEL QUẢN LÝ (PORT 8080) & GHI STATE
       # ───────────────────────────────────────────────
-      - name: 🌐 Khởi chạy Web Quản Lý RDP & Sunshine (Port 8080) & Ghi State
+      - name: 🌐 Khởi chạy Web Quản Lý RDP (Port 8080) & Ghi State
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
@@ -1468,12 +1239,10 @@ jobs:
               '            ".note { font-size: 12px; color: #94a3b8; margin-top: 14px; }",',
               '            "</style></head><body><div class=''card''>",',
               '            "<h1>🎛️ Bảng Điều Khiển AI-STV [$($env:MACHINE_ID)]</h1>",',
-              '            "<div class=''sub''>Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Sunshine Stream, Tắt máy & Chuyển phiên</div>",',
+              '            "<div class=''sub''>Quản lý Lưu ổ đĩa $($env:MOUNT_LETTER):\, Tắt máy & Chuyển phiên</div>",',
               '            "$bannerHtml",',
               '            "<div class=''info''>",',
               '            "<div class=''row''><span>🏷️ Định danh máy:</span><span class=''val''>$($env:MACHINE_ID) ($($env:RELEASE_TAG))</span></div>",',
-              '            "<div class=''row''><span>🌐 IP Tailscale:</span><span class=''val''>$($env:TAILSCALE_IP)</span></div>",',
-              '            "<div class=''row''><span>☀️ Sunshine Web UI:</span><span class=''val''><a href=''https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/'' target=''_blank''>https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>",',
               '            "<div class=''row''><span>👤 Tài khoản gốc:</span><span class=''val''>$($env:RDP_USER)</span></div>",',
               '            "<div class=''row''><span>🔊 Âm thanh ảo:</span><span class=''val''>$($env:AUDIO_DEVICE_NAME)</span></div>",',
               '            "<div class=''row''><span>💽 Ổ đĩa lưu trữ:</span><span class=''val''>$($env:MOUNT_LETTER):\ ($($env:SHARED_ROOT))</span></div>",',
@@ -1496,33 +1265,85 @@ jobs:
           $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1');
           Set-Content -Path "$webScriptPath" -Value ($webLines -join "`r`n") -Encoding UTF8;
           Start-Process pwsh.exe -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', "`"$webScriptPath`"";
-          Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green;
+          Write-Host "✅ Đã khởi chạy Web Quản Lý tại: http://127.0.0.1:$($env:WEB_PORT)/" -ForegroundColor Green;
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 10. CÀI ĐẶT LẠI & MỞ STARDESK (SAU KHI HỆ THỐNG ĐÃ MỞ SẴN SÀNG)
+      # 9. CÀI ĐẶT LẠI & MỞ STARDESK (SAU KHI HỆ THỐNG ĐÃ MỞ SẴN SÀNG)
       # ───────────────────────────────────────────────
       - name: 🚀 Cài đặt lại & Mở StarDesk (Sau khi mọi thứ đã cài xong và máy đã mở)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue';
-          $user          = "$env:RDP_USER";
-          $installerPath = 'C:\Users\runneradmin\Downloads\StarDesk_1.5.2.exe';
-          $appDir        = 'C:\Program Files\StarDesk';
-          $appExe        = 'C:\Program Files\StarDesk\StarDesk.exe';
+          $ProgressPreference    = 'SilentlyContinue';
+          $user                  = "$env:RDP_USER";
+          $downloadUrl           = 'https://download943.mediafire.com/be95vz5kgnig_m7acKGr-mRjXQQKAN0i2WdjIR_d-q70MeLboolFJnUHit6ZmqJYm8_rJigOgY0P5NhtdANnLGXOaEmKg9eWSEUGCEEIZdCrV2NNZ0ubdEO1hyPHR6l2Re85XT5kJpCd3Q4GXpeU0ZD2QSr5gc_6aPfM7r15_YltcA/mf82krdrzcy3dz8/StarDesk_1.5.3.exe';
+          $appDir                = 'C:\Program Files\StarDesk';
+          $appExe                = 'C:\Program Files\StarDesk\StarDesk.exe';
 
           Write-Host "";
-          Write-Host "🚀 ĐANG CÀI ĐẶT LẠI & KHỞI CHẠY STARDESK (GIỮ NGUYÊN DỮ LIỆU ĐÃ LƯU)..." -ForegroundColor Yellow;
+          Write-Host "🚀 ĐANG KIỂM TRA, CÀI ĐẶT & KHỞI CHẠY STARDESK (GIỮ NGUYÊN DỮ LIỆU ĐÃ LƯU)..." -ForegroundColor Yellow;
 
-          if (-not (Test-Path "$installerPath")) {
-              $altInstaller = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads', 'StarDesk_1.5.2.exe');
-              if (Test-Path "$altInstaller") {
-                  $installerPath = "$altInstaller";
+          # Hàm kiểm tra file bộ cài StarDesk có chưa, nếu chưa có thì tải về
+          function Ensure-StarDeskInstaller {
+              param([string]$Url)
+
+              $dlDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads');
+              New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null;
+
+              $targetFile = [System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.3.exe');
+              $cacheFile  = if ("$env:INSTALLER_CACHE") { [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'StarDesk_1.5.3.exe') } else { $null };
+
+              # Danh sách các đường dẫn có thể đã tồn tại từ phiên trước
+              $checkPaths = @(
+                  "$targetFile",
+                  "$cacheFile",
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.3.exe',
+                  ([System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.2.exe')),
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.2.exe'
+              ) | Where-Object { $_ };
+
+              foreach ($p in $checkPaths) {
+                  if ((Test-Path "$p") -and ((Get-Item "$p").Length -gt 1MB)) {
+                      Write-Host "│ ✅ Đã tìm thấy bộ cài StarDesk có sẵn: $p" -ForegroundColor Green;
+                      if (("$p" -ne "$targetFile") -and (-not (Test-Path "$targetFile"))) {
+                          Copy-Item -Path "$p" -Destination "$targetFile" -Force -ErrorAction SilentlyContinue;
+                      }
+                      return "$p";
+                  }
+              }
+
+              Write-Host "│ ⬇️  Chưa có bộ cài StarDesk. Đang tải StarDesk_1.5.3.exe từ MediaFire..." -ForegroundColor Cyan;
+              try {
+                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
+                  & curl.exe -L --retry 3 --connect-timeout 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$Url" -o "$targetFile" 2>$null;
+
+                  if ((-not (Test-Path "$targetFile")) -or ((Get-Item "$targetFile").Length -lt 1MB)) {
+                      Invoke-WebRequest -Uri "$Url" -OutFile "$targetFile" -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 120;
+                  }
+              } catch {
+                  Write-Host "│ ⚠️  Lỗi khi tải bộ cài: $($_.Exception.Message)" -ForegroundColor Yellow;
+              }
+
+              if ((Test-Path "$targetFile") -and ((Get-Item "$targetFile").Length -gt 1MB)) {
+                  Write-Host "│ ✅ Đã tải thành công bộ cài: $targetFile ($([math]::Round((Get-Item "$targetFile").Length / 1MB, 2)) MB)" -ForegroundColor Green;
+                  if ($cacheFile) {
+                      Copy-Item -Path "$targetFile" -Destination "$cacheFile" -Force -ErrorAction SilentlyContinue;
+                  }
+                  return "$targetFile";
+              } else {
+                  if (Test-Path "$targetFile") {
+                      Remove-Item -Path "$targetFile" -Force -ErrorAction SilentlyContinue;
+                  }
+                  Write-Host "│ ❌ Tải file cài đặt thất bại hoặc link MediaFire đã hết hạn/đổi token!" -ForegroundColor Red;
+                  return $null;
               }
           }
 
-          if (Test-Path "$installerPath") {
-              Write-Host "│ 📦 Tìm thấy bộ cài: $installerPath. Đang tiến hành cài đặt lại..." -ForegroundColor Cyan;
+          $installerPath = Ensure-StarDeskInstaller -Url "$downloadUrl";
+
+          if (($installerPath) -and (Test-Path "$installerPath")) {
+              Write-Host "│ 📦 Đang tiến hành cài đặt từ: $installerPath..." -ForegroundColor Cyan;
 
               Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
               Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
@@ -1537,7 +1358,7 @@ jobs:
               if (-not ($doneInstall)) {
                   Write-Host "│ ⚠️  Bộ cài chạy quá 60s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
                   Stop-Job -Job ($sdInstallJob) -ErrorAction SilentlyContinue;
-                  Get-Process -Name 'StarDesk_1.5.2*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
+                  Get-Process -Name 'StarDesk_1.5.*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
               }
               Remove-Job -Job ($sdInstallJob) -Force -ErrorAction SilentlyContinue;
 
@@ -1554,9 +1375,9 @@ jobs:
                       Stop-Process -Id ($proc.Id) -Force -ErrorAction SilentlyContinue;
                   }
               }
-              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt StarDesk_1.5.2.exe" -ForegroundColor Green;
+              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt ($([System.IO.Path]::GetFileName("$installerPath")))" -ForegroundColor Green;
           } else {
-              Write-Host "│ ⚠️  Không tìm thấy file cài đặt tại $installerPath (sẽ thử mở trực tiếp nếu đã có sẵn)" -ForegroundColor Yellow;
+              Write-Host "│ ⚠️  Không tìm thấy file cài đặt hợp lệ (sẽ thử mở trực tiếp nếu đã có sẵn trong ổ C)" -ForegroundColor Yellow;
           }
 
           Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
@@ -1584,7 +1405,7 @@ jobs:
           $global:LASTEXITCODE = 0;
           exit 0;
 
-      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + SUNSHINE + STARDESK + MÀN HÌNH ẢO + ÂM THANH ẢO)
+      - name: 🎉 THÔNG TIN KẾT NỐI (RDP + STARDESK + MÀN HÌNH ẢO + ÂM THANH ẢO)
         shell: pwsh
         run: |
           $tz    = [System.TimeZoneInfo]::FindSystemTimeZoneById('SE Asia Standard Time');
@@ -1600,14 +1421,12 @@ jobs:
 
           Write-Host "";
           Write-Host "┌──────────────────────────────────────────────────────────┐" -ForegroundColor Cyan;
-          Write-Host "│     🎉 RDP + SUNSHINE + STARDESK + Ổ ĐĨA SẴN SÀNG!       │" -ForegroundColor Cyan;
+          Write-Host "│         🎉 STARDESK + RDP + Ổ ĐĨA SẴN SÀNG!              │" -ForegroundColor Cyan;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
           Write-Host "│ 🏷️  Định danh máy : $env:MACHINE_ID (Kho lưu: $env:RELEASE_TAG)" -ForegroundColor Cyan;
-          Write-Host "│ 🌐  IP Tailscale  : $env:TAILSCALE_IP (RDP: 3389 | Moonlight)" -ForegroundColor White;
-          Write-Host "│ ☀️  Sunshine Web  : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
-          Write-Host "│ 🎛️  Web Quản Lý   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "│ 🎛️  Web Quản Lý   : http://127.0.0.1:$($env:WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "│ 🚀  StarDesk      : $sdStatus" -ForegroundColor Green;
-          Write-Host "│ 👤  User gốc      : $env:RDP_USER (Dùng chung cho cả RDP & Sunshine)" -ForegroundColor Green;
+          Write-Host "│ 👤  User gốc      : $env:RDP_USER" -ForegroundColor Green;
           Write-Host "│ 🔐  Mật khẩu      : $passText (Cố định)" -ForegroundColor Green;
           Write-Host "│ 🖥️  Màn hình ảo   : ${{ inputs.vdd_resolution }} (Trực tiếp trên Console)" -ForegroundColor Green;
           Write-Host "│ 🔊  Âm thanh ảo   : $env:AUDIO_DEVICE_NAME" -ForegroundColor Green;
@@ -1615,15 +1434,14 @@ jobs:
           Write-Host "│ 👤  Profile gốc   : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green;
           Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
-          Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow;
           Write-Host "│ 💡 Dữ liệu của [$env:MACHINE_ID] được lưu độc lập tại Release [$env:RELEASE_TAG]!" -ForegroundColor Yellow;
           Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan;
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 11. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
+      # 10. DUY TRÌ PHIÊN & LẮNG NGHE LỆNH TỪ WEB QUẢN LÝ
       # ───────────────────────────────────────────────
-      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ SUNSHINE/STARDESK/AUDIO)
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC (LẮNG NGHE WEB PANEL & GIỮ STARDESK/AUDIO)
         id: keepalive
         shell: pwsh
         run: |
@@ -1637,9 +1455,7 @@ jobs:
 
           Write-Host "";
           Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC CHO MÁY [$env:MACHINE_ID]..." -ForegroundColor Yellow;
-          Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389 (User:$u)" -ForegroundColor Cyan;
-          Write-Host "☀️ Sunshine Web UI : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
-          Write-Host "🎛️ Web Quản Lý     : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
+          Write-Host "🎛️ Web Quản Lý     : http://127.0.0.1:$($env:WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "🕐 Kết thúc dự kiến: $($endLocal.ToString('HH:mm:ss'))" -ForegroundColor Green;
           Write-Host "";
 
@@ -1680,34 +1496,28 @@ jobs:
                   @(quser 2>$null) | ForEach-Object {
                       $lineStr = "$_";
                       if (("$lineStr" -match "^\s*>?$([regex]::Escape("$u"))\s+") -and ("$lineStr" -notmatch "\s+console\s+")) {
-                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';
-                          $sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
+                          $parts  = (($lineStr -replace '^>', ' ').Trim()) -split '\s+';$sidNum = $parts[1..(($parts.Count) - 1)] | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1;
                           if (($sidNum) -and ("$lineStr" -match "\s+Disc\s+")) {
                               & tscon "$sidNum" /dest:console *> $null;
-                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho Sunshine & StarDesk!" -ForegroundColor Green;
+                              Write-Host "🖥️ Đã trả phiên User gốc $u (ID:$sidNum) về màn hình Console cho StarDesk!" -ForegroundColor Green;
                           }
                       }
                   };
               } catch {}
 
-              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
-              $remain = ($endEpoch) - ($now);
+              $now    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();$remain = ($endEpoch) - ($now);
               if (($remain) -le 0) {
                   Write-Host "⏰ Đã hết thời gian phiên làm việc!" -ForegroundColor Yellow;
                   break;
               }
 
-              if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {
-                  $svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
+              if ((((Get-Date) - ($lastLog)).TotalMinutes) -ge 5) {$svc     = Get-Service -Name TermService -ErrorAction SilentlyContinue;
                   $audSvc  = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
-                  $sunProc = Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue;
-                  $sunSvc  = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-                  $sunStat = if (($sunProc) -or (($sunSvc) -and (($sunSvc.Status) -eq 'Running'))) { 'Running' } else { 'Stopped' };
                   $sdProc  = Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue;
                   $sdStat  = if ($sdProc) { 'Running' } else { 'Stopped' };
                   $h = [math]::Floor(($remain) / 3600);
                   $m = [math]::Floor((($remain) % 3600) / 60);
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 [$env:MACHINE_ID] RDP: $($svc.Status) | Sunshine: $sunStat | StarDesk: $sdStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] 📊 [$env:MACHINE_ID] RDP:$($svc.Status) | StarDesk:$sdStat | Audio: $($audSvc.Status) | Còn lại: ${h}h${m}m" -ForegroundColor Blue;
                   $lastLog = Get-Date;
               }
 
@@ -1722,13 +1532,6 @@ jobs:
                   Start-Service -Name Audiosrv -ErrorAction SilentlyContinue;
               }
 
-              if (-not (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue)) {
-                  $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1;
-                  if ($sunSvc) {
-                      Start-Service -Name ($sunSvc.Name) -ErrorAction SilentlyContinue;
-                  }
-              }
-
               if ((Test-Path "$sdExe") -and (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue))) {
                   Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Start-Service -ErrorAction SilentlyContinue;
                   & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
@@ -1740,7 +1543,7 @@ jobs:
 
               if ((-not ($warned)) -and (($remain) -le 300)) {
                   try {
-                      msg * /TIME:290 "Phien RDP/Sunshine/StarDesk [$($env:MACHINE_ID)] sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
+                      msg * /TIME:290 "Phien StarDesk [$($env:MACHINE_ID)] sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
                   $warned =$true;
               }
@@ -1753,16 +1556,13 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 12. TẮT SUNSHINE / STARDESK & LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
+      # 11. TẮT STARDESK & LƯU TOÀN BỘ Ổ ĐĨA CUỐI PHIÊN LÊN GITHUB
       # ───────────────────────────────────────────────
-      - name: 💾 Tắt Sunshine, Kill StarDesk & Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
+      - name: 💾 Kill StarDesk & Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
         if: always()
         shell: pwsh
         run: |
-          Write-Host "🛑 Đang tắt Sunshine & Kill toàn bộ tiến trình StarDesk cuối phiên..." -ForegroundColor Yellow;
-
-          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
-          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
+          Write-Host "🛑 Đang Kill toàn bộ tiến trình StarDesk cuối phiên..." -ForegroundColor Yellow;
 
           & schtasks.exe /Delete /TN "AISTV-Launch-StarDesk" /F *> $null;
           Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
@@ -1772,7 +1572,7 @@ jobs:
           Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
           Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
           & taskkill.exe /F /IM 'StarDesk*' /T *> $null;
-          Write-Host "✅ Đã tắt hoàn toàn StarDesk & Sunshine!" -ForegroundColor Green;
+          Write-Host "✅ Đã tắt hoàn toàn StarDesk!" -ForegroundColor Green;
 
           $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1');
           if (-not (Test-Path "$saveScript")) {
@@ -1785,7 +1585,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 13. DỌN DẸP HỆ THỐNG
+      # 12. DỌN DẸP HỆ THỐNG
       # ───────────────────────────────────────────────
       - name: 🧹 DỌN DẸP HỆ THỐNG
         if: always()
@@ -1801,20 +1601,8 @@ jobs:
               Write-Host "│ ✅ Đã đóng triệt để tiến trình StarDesk" -ForegroundColor Green;
           } catch {}
 
-          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe";
-
-          try {
-              if (Test-Path "$ts") {
-                  & "$ts" logout 2>&1 | Out-Null;
-                  & "$ts" down 2>&1 | Out-Null;
-              }
-              Write-Host "│ ✅ Đóng kết nối mạng" -ForegroundColor Green;
-          } catch {}
-
           try {
               Remove-NetFirewallRule -DisplayName 'RDP-Premium' -ErrorAction SilentlyContinue;
-              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -ErrorAction SilentlyContinue;
-              Remove-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -ErrorAction SilentlyContinue;
               Write-Host "│ ✅ Xóa rule firewall" -ForegroundColor Green;
           } catch {}
 
@@ -1828,7 +1616,7 @@ jobs:
           exit 0;
 
       # ───────────────────────────────────────────────
-      # 14. KÍCH HOẠT PHIÊN TIẾP THEO (GỌI LẠI ĐÚNG MÃ MÁY & Ổ ĐĨA)
+      # 13. KÍCH HOẠT PHIÊN TIẾP THEO (GỌI LẠI ĐÚNG MÃ MÁY & Ổ ĐĨA)
       # ───────────────────────────────────────────────
       - name: 🔁 Kích hoạt phiên tiếp theo & Mở lại ổ đĩa
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart || env.FORCE_NEXT_SESSION == '1') }}
