@@ -1,4 +1,4 @@
-name: máy của chill
+name: máy của datv2
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       machine_id:
         description: '🏷️ Tên định danh máy & bản lưu riêng (VD: may-phu-1, may-phu-2 để chạy song song không đè nhau)'
         required: false
-        default: 'may-phu-2'
+        default: 'may-datv2'
         type: string
       duration:
         description: '🕐 Thời gian sử dụng (tính từ lúc job bắt đầu)'
