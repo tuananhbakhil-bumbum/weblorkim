@@ -1,0 +1,15 @@
+{
+  "machineId": "may-datv2",
+  "releaseTag": "aistv-storage-may-datv2",
+  "user": "runneradmin",
+  "sid": "S-1-5-21-3213014087-2684668049-2838998412-500",
+  "password": null,
+  "passwordSource": "secret",
+  "windowsImage": "windows-2022",
+  "osBuild": "20348",
+  "driveLetter": "X",
+  "durationMinutes": 300,
+  "startUtc": "2026-10-17T05:22:00.9090243Z",
+  "runId": "39005898479",
+  "lastUpdatedUtc": "2026-10-17T05:24:53.6305348Z"
+}
