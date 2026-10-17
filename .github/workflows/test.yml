@@ -1,0 +1,302 @@
+name: Windows StarDesk Auto-Login
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: 'Thời gian duy trì máy (phút - tối đa 350)'
+        required: false
+        default: '345'
+
+env:
+  RDP_USER: "runneradmin"
+  RDP_PASS: "Aistv@2026!Strong"
+  PROFILE_PATH: "C:\\Users\\runneradmin"
+  INSTALLER_CACHE: "C:\\InstallerCache"
+  STARDESK_CONFIG_REPO: "https://github.com/ddvdat-glitch/start.git"
+
+jobs:
+  stardesk-node:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      # ───────────────────────────────────────────────
+      # 1. CẤU HÌNH HỆ THỐNG, USER GỐC & PHIÊN DESKTOP (KHÔNG CÀI SUNSHINE / TAILSCALE)
+      # ───────────────────────────────────────────────
+      - name: ⚙️ Cấu hình Hệ thống & Khởi tạo Phiên Desktop cho User gốc
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'$ProgressPreference    = 'SilentlyContinue'
+          $user                  = "$env:RDP_USER"
+          $pass                  = "$env:RDP_PASS"
+
+          New-Item -ItemType Directory -Force -Path "$env:INSTALLER_CACHE" | Out-Null
+
+          Write-Host "🔧 Đang đặt mật khẩu cho $user và bật Remote Desktop nội bộ..." -ForegroundColor Cyan
+          & net.exe user "$user" "$pass" /Y | Out-Null
+          & net.exe localgroup Administrators "$user" /add 2>$null | Out-Null
+          & wmic.exe useraccount where "Name='$user'" set PasswordExpires=False 2>$null | Out-Null
+
+          # Bật RDP để tạo phiên Console/Desktop актив cho StarDesk bắt hình
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+
+          # Tạo phiên đăng nhập Desktop thực tế cho runneradmin (tránh màn hình đen trên StarDesk)
+          & cmdkey.exe /generic:TERMSRV/127.0.0.1 /user:"$user" /pass:"$pass" | Out-Null
+          Start-Process -FilePath "mstsc.exe" -ArgumentList "/v:127.0.0.1 /w:1920 /h:1080" -WindowStyle Minimized
+          Start-Sleep -Seconds 8
+          Write-Host "✅ Đã khởi tạo phiên Desktop cho $user" -ForegroundColor Green
+
+      # ───────────────────────────────────────────────
+      # 2. CÀI ÂM THANH ẢO VB-AUDIO (ĐỂ STARDESK CÓ TIẾNG)
+      # ───────────────────────────────────────────────
+      - name: 🔊 Cài đặt Driver Âm Thanh Ảo (VB-Audio)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'$ProgressPreference    = 'SilentlyContinue'
+          Write-Host "🔊 Đang cài đặt VB-CABLE Virtual Audio..." -ForegroundColor Cyan
+          choco install vbcable -y --no-progress *> $null
+          Set-Service -Name "Audiosrv" -StartupType Automatic -ErrorAction SilentlyContinue
+          Start-Service -Name "Audiosrv" -ErrorAction SilentlyContinue
+          Write-Host "✅ Hoàn tất cấu hình âm thanh" -ForegroundColor Green
+
+      # ───────────────────────────────────────────────
+      # 3. TẢI & GIẢI NÉN CẤU HÌNH TÀI KHOẢN STARDESK TỪ REPO (TRƯỚC KHI CÀI STARDESK)
+      # ───────────────────────────────────────────────
+      - name: 📂 Tải & Giải nén dữ liệu tài khoản StarDesk từ Repo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'$ProgressPreference    = 'SilentlyContinue'
+          $repoUrl               = "$env:STARDESK_CONFIG_REPO"
+          $repoDir               = "C:\Temp\stardesk_repo"
+          $extractDir            = "C:\Temp\stardesk_extracted"
+
+          Write-Host "⬇️ Đang tải cấu hình StarDesk từ $repoUrl ..." -ForegroundColor Cyan
+          Remove-Item -Path "$repoDir", "$extractDir" -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "$repoDir", "$extractDir" | Out-Null
+
+          & git.exe clone --depth 1 "$repoUrl" "$repoDir" 2>$null
+          if (-not (Get-ChildItem -Path "$repoDir" -ErrorAction SilentlyContinue)) {
+              Write-Host "⚠️ git clone không thành công, thử tải trực tiếp ZIP từ GitHub..." -ForegroundColor Yellow
+              $zipUrl =$repoUrl -replace '\.git$', ''$zipFile = "C:\Temp\repo_start.zip"
+              & curl.exe -L -s "$zipUrl/archive/refs/heads/main.zip" -o "$zipFile"
+              if ((-not (Test-Path "$zipFile")) -or ((Get-Item "$zipFile").Length -lt 500)) {
+                  & curl.exe -L -s "$zipUrl/archive/refs/heads/master.zip" -o "$zipFile"
+              }
+              if (Test-Path "$zipFile") {
+                  & "C:\Program Files\7-Zip\7z.exe" x "$zipFile" "-o$repoDir" -y *> $null
+              }
+          }
+
+          # Tìm mọi file nén (.rar, .7z, .zip) trong repo và giải nén bằng 7-Zip
+          $archives = Get-ChildItem -Path "$repoDir" -Include *.rar, *.7z, *.zip -Recurse -File -ErrorAction SilentlyContinue
+          if ($archives) {
+              foreach ($arc in$archives) {
+                  Write-Host "📦 Đang giải nén file: $($arc.FullName)..." -ForegroundColor Cyan
+                  & "C:\Program Files\7-Zip\7z.exe" x "$($arc.FullName)" "-o$extractDir" -y *> $null
+              }
+          } else {
+              Write-Host "ℹ️ Không thấy file nén .rar/.zip, sử dụng trực tiếp thư mục trong repo..." -ForegroundColor Cyan
+              Copy-Item -Path "$repoDir\*" -Destination "$extractDir" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          # Tìm đúng nhánh thư mục Local\StarDesk và ProgramData\StarDesk sau khi giải nén
+          $localSrc = Get-ChildItem -Path "$extractDir", "$repoDir" -Directory -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'Local[\\/]StarDesk$' } \vert{} Select-Object -First 1$progSrc  = Get-ChildItem -Path "$extractDir", "$repoDir" -Directory -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'ProgramData[\\/]StarDesk$' } | Select-Object -First 1
+
+          # Đường dẫn đích chuẩn trên hệ thống Windows
+          $localDstUser = "C:\Users\runneradmin\AppData\Local\StarDesk"
+          $localDstProf = [System.IO.Path]::Combine("$env:PROFILE_PATH", "AppData\Local\StarDesk")
+          $progDst      = "C:\ProgramData\StarDesk"
+
+          New-Item -ItemType Directory -Force -Path "$localDstUser", "$progDst" | Out-Null
+          if ("$localDstProf" -ne "$localDstUser") {
+              New-Item -ItemType Directory -Force -Path "$localDstProf" | Out-Null
+          }
+
+          if ($localSrc) {
+              Copy-Item -Path "$($localSrc.FullName)\*" -Destination "$localDstUser" -Recurse -Force
+              if ("$localDstProf" -ne "$localDstUser") {
+                  Copy-Item -Path "$($localSrc.FullName)\*" -Destination "$localDstProf" -Recurse -Force
+              }
+              "STARDESK_LOCAL_BACKUP=$($localSrc.FullName)" >> "$env:GITHUB_ENV"
+              Write-Host "✅ Đã đưa dữ liệu Local\StarDesk về: $localDstUser" -ForegroundColor Green
+          } else {
+              Write-Host "⚠️ Không tìm thấy thư mục Local\StarDesk trong bản giải nén!" -ForegroundColor Yellow
+          }
+
+          if ($progSrc) {
+              Copy-Item -Path "$($progSrc.FullName)\*" -Destination "$progDst" -Recurse -Force
+              "STARDESK_PROG_BACKUP=$($progSrc.FullName)" >> "$env:GITHUB_ENV"
+              Write-Host "✅ Đã đưa dữ liệu ProgramData\StarDesk về: $progDst" -ForegroundColor Green
+          } else {
+              Write-Host "⚠️ Không tìm thấy thư mục ProgramData\StarDesk trong bản giải nén!" -ForegroundColor Yellow
+          }
+
+      # ───────────────────────────────────────────────
+      # 4. TẢI, CÀI ĐẶT & MỞ STARDESK (VÀO SẴN TÀI KHOẢN)
+      # ───────────────────────────────────────────────
+      - name: 🚀 Tải, Cài đặt & Mở StarDesk (Giữ nguyên tài khoản đã nạp)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'$ProgressPreference    = 'SilentlyContinue'
+          $user                  = "$env:RDP_USER"
+          $downloadUrl           = 'https://download943.mediafire.com/be95vz5kgnig_m7acKGr-mRjXQQKAN0i2WdjIR_d-q70MeLboolFJnUHit6ZmqJYm8_rJigOgY0P5NhtdANnLGXOaEmKg9eWSEUGCEEIZdCrV2NNZ0ubdEO1hyPHR6l2Re85XT5kJpCd3Q4GXpeU0ZD2QSr5gc_6aPfM7r15_YltcA/mf82krdrzcy3dz8/StarDesk_1.5.3.exe'
+          $appDir                = 'C:\Program Files\StarDesk'$appExe                = 'C:\Program Files\StarDesk\StarDesk.exe'
+
+          Write-Host ""
+          Write-Host "🚀 ĐANG KIỂM TRA, CÀI ĐẶT & KHỞI CHẠY STARDESK (GIỮ NGUYÊN DỮ LIỆU TÀI KHOẢN)..." -ForegroundColor Yellow
+
+          function Ensure-StarDeskInstaller {
+              param([string]$Url)
+
+              $dlDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads')
+              New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null
+
+              $targetFile = [System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.3.exe')
+              $cacheFile  = if ("$env:INSTALLER_CACHE") { [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'StarDesk_1.5.3.exe') } else { $null }
+
+              $checkPaths = @(
+                  "$targetFile",
+                  "$cacheFile",
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.3.exe',
+                  ([System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.2.exe')),
+                  'C:\Users\runneradmin\Downloads\StarDesk_1.5.2.exe'
+              ) | Where-Object { $_ }
+
+              foreach ($p in$checkPaths) {
+                  if ((Test-Path "$p") -and ((Get-Item "$p").Length -gt 1MB)) {
+                      Write-Host "│ ✅ Đã tìm thấy bộ cài StarDesk có sẵn: $p" -ForegroundColor Green
+                      if (("$p" -ne "$targetFile") -and (-not (Test-Path "$targetFile"))) {
+                          Copy-Item -Path "$p" -Destination "$targetFile" -Force -ErrorAction SilentlyContinue
+                      }
+                      return "$p"
+                  }
+              }
+
+              Write-Host "│ ⬇️ Chưa có bộ cài StarDesk. Đang tải StarDesk_1.5.3.exe từ MediaFire..." -ForegroundColor Cyan
+              try {
+                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                  & curl.exe -L --retry 3 --connect-timeout 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$Url" -o "$targetFile" 2>$null
+
+                  if ((-not (Test-Path "$targetFile")) -or ((Get-Item "$targetFile").Length -lt 1MB)) {
+                      Invoke-WebRequest -Uri "$Url" -OutFile "$targetFile" -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 120
+                  }
+              } catch {
+                  Write-Host "│ ⚠️ Lỗi khi tải bộ cài: $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+
+              if ((Test-Path "$targetFile") -and ((Get-Item "$targetFile").Length -gt 1MB)) {
+                  Write-Host "│ ✅ Đã tải thành công bộ cài: $targetFile ($([math]::Round((Get-Item "$targetFile").Length / 1MB, 2)) MB)" -ForegroundColor Green
+                  if ($cacheFile) {
+                      Copy-Item -Path "$targetFile" -Destination "$cacheFile" -Force -ErrorAction SilentlyContinue
+                  }
+                  return "$targetFile"
+              } else {
+                  if (Test-Path "$targetFile") {
+                      Remove-Item -Path "$targetFile" -Force -ErrorAction SilentlyContinue
+                  }
+                  Write-Host "│ ❌ Tải file cài đặt thất bại hoặc link MediaFire đã hết hạn/đổi token!" -ForegroundColor Red
+                  return $null
+              }
+          }
+
+          $installerPath = Ensure-StarDeskInstaller -Url "$downloadUrl"
+
+          if (($installerPath) -and (Test-Path "$installerPath")) {
+              Write-Host "│ 📦 Đang tiến hành cài đặt từ: $installerPath..." -ForegroundColor Cyan
+
+              Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+              Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 2
+
+              $sdInstallJob = Start-Job -ScriptBlock {
+                  param($exe)
+                  Start-Process -FilePath "$exe" -ArgumentList '/S' -Wait
+              } -ArgumentList "$installerPath"
+
+              $doneInstall = Wait-Job -Job ($sdInstallJob) -Timeout 60
+              if (-not ($doneInstall)) {
+                  Write-Host "│ ⚠️ Bộ cài chạy quá 60s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow
+                  Stop-Job -Job ($sdInstallJob) -ErrorAction SilentlyContinue
+                  Get-Process -Name 'StarDesk_1.5.*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+              }
+              Remove-Job -Job ($sdInstallJob) -Force -ErrorAction SilentlyContinue
+
+              if ((-not (Test-Path "$appExe")) -and (-not (Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue))) {
+                  Write-Host "│ 🔄 Chạy trực tiếp bộ cài $installerPath..." -ForegroundColor Cyan
+                  $proc = Start-Process -FilePath "$installerPath" -PassThru -ErrorAction SilentlyContinue
+                  $waited = 0
+                  while (($waited -lt 45) -and (-not (Test-Path "$appExe"))) {
+                      Start-Sleep -Seconds 2
+                      $waited += 2
+                  }
+                  Start-Sleep -Seconds 3
+                  if (($proc) -and (-not ($proc.HasExited))) {
+                      Stop-Process -Id ($proc.Id) -Force -ErrorAction SilentlyContinue
+                  }
+              }
+              Write-Host "│ ✅ Đã hoàn tất chạy bộ cài đặt ($([System.IO.Path]::GetFileName("$installerPath")))" -ForegroundColor Green
+          }
+
+          # Dừng tạm tiến trình vừa cài để chép đè lại lần nữa phòng trường hợp bộ cài ghi đè file config.ini mới
+          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 1
+
+          if ("$env:STARDESK_LOCAL_BACKUP" -and (Test-Path "$env:STARDESK_LOCAL_BACKUP")) {
+              Copy-Item -Path "$env:STARDESK_LOCAL_BACKUP\*" -Destination "C:\Users\runneradmin\AppData\Local\StarDesk" -Recurse -Force
+          }
+          if ("$env:STARDESK_PROG_BACKUP" -and (Test-Path "$env:STARDESK_PROG_BACKUP")) {
+              Copy-Item -Path "$env:STARDESK_PROG_BACKUP\*" -Destination "C:\ProgramData\StarDesk" -Recurse -Force
+          }
+
+          # Bật lại Service và khởi chạy StarDesk với tài khoản đã nạp
+          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
+              Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue
+              Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue
+              Write-Host "│ ✅ Đã bật dịch vụ $($_.Name)" -ForegroundColor Green
+          }
+
+          if (Test-Path "$appExe") {
+              try {
+                  & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null
+                  & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null
+                  Start-Sleep -Seconds 3
+              } catch {}
+
+              if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) {
+                  Start-Process -FilePath "$appExe" -WorkingDirectory "$appDir"
+                  Start-Sleep -Seconds 2
+              }
+              "STARDESK_READY=1" >> "$env:GITHUB_ENV"
+              Write-Host "│ ✅ Đã mở ứng dụng StarDesk thành công vào sẵn tài khoản: $appExe" -ForegroundColor Green
+          } else {
+              Write-Host "│ ❌ Không tìm thấy $appExe sau khi chạy cài đặt!" -ForegroundColor Red
+          }
+          $global:LASTEXITCODE = 0
+          exit 0
+
+      # ───────────────────────────────────────────────
+      # 5. DUY TRÌ PHIÊN LÀM VIỆC & TỰ ĐỘNG GIỮ STARDESK LUÔN MỞ
+      # ───────────────────────────────────────────────
+      - name: ⏳ Duy trì phiên làm việc StarDesk
+        shell: pwsh
+        run: |
+          $duration = [int]("${{ github.event.inputs.duration_minutes }}" ? "${{ github.event.inputs.duration_minutes }}" : 345)
+          $endTime  = (Get-Date).AddMinutes($duration)$appExe   = 'C:\Program Files\StarDesk\StarDesk.exe'
+
+          Write-Host "🟢 Máy đã sẵn sàng trên StarDesk! Phiên sẽ duy trì trong $duration phút..." -ForegroundColor Green
+
+          while ((Get-Date) -lt $endTime) {
+              if ((Test-Path "$appExe") -and (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue))) {
+                  Write-Host "🔄 Phát hiện StarDesk bị tắt, đang tự động bật lại..." -ForegroundColor Yellow
+                  & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null
+              }
+              $remain = [math]::Round(($endTime - (Get-Date)).TotalMinutes, 1)
+              Write-Host "⏱️ Thời gian còn lại: $remain phút" -ForegroundColor Gray
+              Start-Sleep -Seconds 60
+          }
